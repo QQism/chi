@@ -1,0 +1,11 @@
+{:type "document"
+ :children [{:type "section"
+             :children [{:type "title"
+                         :children [{:type "text"
+                                     :value "First Head"}]}
+                        {:type "paragraph"
+                         :children [{:type "text" :value "this is "}
+                                    {:type "emphasis"
+                                     :children [{:type "text"
+                                                 :value "the first section"}]}
+                                    {:type "text" :value " text"}]}]}]}

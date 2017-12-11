@@ -1,7 +1,12 @@
 (ns rst.new-parser
   (:require  [clojure.java.io :as io]
              [clojure.string :as string]
+             [clojure.pprint :refer [pprint]]
              [clojure.zip :as z]))
+
+(defn debug-node [node]
+  (let [{t :type id :iid s :style c :children} node]
+    {:t t :id id :s s :c c}))
 
 (def iid-counter (atom 0))
 
@@ -42,8 +47,7 @@
   {:line      {:pattern (:line patterns)}
    :underline {:pattern (:line patterns)}
    :text      {:pattern (:text patterns)}
-   :blank     {:pattern (:blank patterns)}
-   })
+   :blank     {:pattern (:blank patterns)}})
 
 (defn match-transition [transition-name line]
   (-> (transition-name transition-patterns)
@@ -77,40 +81,47 @@
    :children (create-inline-markup-text text)})
 
 (defn append-section [node-loc section]
+  ;; Append the section as the new child of the current node location
+  ;; Move the location to the position of the new child
   (-> node-loc
       (z/append-child section)
       z/down
-      z/rightmost
-      z/down))
+      z/rightmost))
+
+(defn find-child-loc [doc-loc child-iid]
+  (some #(if (= (:iid (z/node %)) child-iid) %)
+        (children-loc doc-loc)))
+
+(defn find-matching-section-loc [doc-loc style]
+  ;; Travel in the whole doc from top to the current path
+  ;; - if there is a section having the same style as the new section
+  ;;   | return the location
+  ;; - else
+  ;;   | return nil
+  (let [current-iid-path (get-iid-path doc-loc)]
+    (loop [current-loc (up-to-root doc-loc)
+           depth 1]
+      (if (< depth (count current-iid-path))
+        (let [current-iid (nth current-iid-path depth)]
+          (if-let [section-loc (find-child-loc current-loc current-iid)]
+            (let [section (z/node section-loc)]
+              (if (= (:style section) style)
+                current-loc
+                (recur section-loc (inc depth))))))))))
 
 (defn create-section-text->line [doc context lines]
   ;; create the new section
-  ;; Check the current path in the context
-  ;; Travel in the whole doc from top to the current path
-  ;; - if there is a section having the same style as the new section
-  ;;   | append the new section as the sibling of the matched section
-  ;; - else
-  ;;   | append the new section as a child of the current path
-  ;; After all
-  ;; swith the current path to t
+  ;; Find the matching parent section location
+  ;; Append the new section as a child of the current path
   (let [{idx :current-idx remains :remains} context
         text (peek remains)
         line (nth lines idx)
         new-section (create-section text line "underline")
         style (:style new-section)
         current-iid-path (get-iid-path doc)]
-    (loop [current-loc (up-to-root doc)
-           depth 1]
-      (if (-> current-loc nil? not)
-        (if (< depth (count current-iid-path))
-          (let [current-iid (nth current-iid-path depth)]
-            (if-let [section-loc (some #(if (= (:iid (z/node %)) current-iid) %)
-                                       (children-loc current-loc))]
-              (let [section (z/node section-loc)]
-                (if (= (:style section) style)
-                  (append-section current-loc new-section)
-                  (recur section-loc (inc depth))))))
-          (append-section current-loc new-section)))))))
+    (if-let [matched-parent-section (find-matching-section-loc doc style)]
+      (append-section matched-parent-section new-section)
+      (append-section doc new-section))))
 
 (def body->blank {:name :blank,
                   :state :body,
@@ -125,7 +136,16 @@
 
 (defn append-text [doc block-text]
   (let [paragraph (create-paragraph block-text)]
-    (-> doc (z/append-child paragraph))))
+    (do
+      (println "[Current Loc]")
+      (pprint doc)
+      (println (str "[Path IID] "(get-iid-path doc)))
+      (println "\n")
+      (println (str "[Paragraph] " block-text))
+      (pprint paragraph)
+      (-> doc
+          ;;z/up
+          (z/append-child paragraph)))))
 
 (def body->text
   {:name :text,
@@ -135,7 +155,7 @@
                   lines-count (count lines)]
               (if (< current-idx lines-count)
                 (let [line (nth lines current-idx)
-                      block-text (conj remains line)]
+                      text-lines (conj remains line)]
                   (if (< (inc current-idx) lines-count)
                     [doc
                      (-> context
@@ -143,7 +163,7 @@
                          (update :current-idx inc)
                          (update :states conj :text))]
                     ;; next line if EOF
-                    [(append-text doc (string/join " " block-text))
+                    [(append-text doc (string/join " " text-lines))
                      (-> context
                          (assoc :remains [])
                          (update :current-idx inc))])))))})
@@ -155,7 +175,16 @@
                  :state :line})
 
 (def text->blank {:name :blank,
-                  :state :text})
+                  :state :text,
+                  :parse (fn [doc context lines]
+                           (let [text-lines (:remains context)
+                                 block-text (string/join " " text-lines)]
+                             [(append-text doc block-text)
+                              (-> context
+                                  (assoc :remains [])
+                                  (update :current-idx inc)
+                                  (update :states pop))]
+                             ))})
 
 (def text->text {:name :text,
                  :state :text,
@@ -163,7 +192,8 @@
                           ;; Read the whole block of text until the blank line
                           ;; keep track the index
                           (loop [current-context context]
-                            (let [{idx :current-idx block-text :remains} current-context]
+                            (let [{idx :current-idx text-lines :remains} current-context
+                                  block-text (string/join " " text-lines)]
                               (if (< idx (count lines))
                                 (let [line (nth lines idx)]
                                   (if (not (match-transition :blank line))
@@ -171,12 +201,12 @@
                                                (update :current-idx inc)
                                                (update :remains conj line)))
                                     ;; blank line, create paragraph & return
-                                    [(append-text doc (string/join " " block-text))
+                                    [(append-text doc block-text)
                                      (-> current-context
                                          (assoc :remains [])
                                          (update :states pop))]))
                                 ;; EOF, create paragraph & return
-                                [(append-text doc (string/join " " block-text))
+                                [(append-text doc block-text)
                                  (-> current-context
                                      (assoc :remains [])
                                      (update :current-idx inc)
@@ -212,25 +242,6 @@
                                    (update :current-idx inc)
                                    (update :states pop))])))})
 
-(-> text->line
-    :parse
-    (apply [(-> (z/zipper #(not= (:type %) :text)
-                          :children
-                          (fn [node children]
-                            (assoc node :children (vec children))
-                            ) doc-sample)
-                z/down
-                z/down
-                z/rightmost
-                z/down
-                )
-            {:remains ["The 2nd Header"],
-             :current-idx 13,
-             :states [:text],
-             :path [1 7]} lines])
-    z/node
-    ;;(->> (map :iid))
-    )
 
 (def doc-sample
   {:type :root
@@ -269,6 +280,8 @@
                                       ;;                         :value "Sub Sub Header"}]}]}
                                       ]}]}]})
 
+
+
 ;; Each state has a list of possible transitions
 ;; depend on what type of transition on each state, the parser may decide to do the following tasks
 ;; - Parse the line
@@ -291,16 +304,30 @@
 (defn parse [doc context transition lines]
   (-> transition :parse (apply [doc context lines])))
 
-(def lines (-> (io/resource "nested-sections.rst")
+(def lines (-> (io/resource "demo.rst")
                slurp
                (string/split #"\r|\n")
                (->> (map string/trim))))
 
 (defn zip-doc [doc]
-  (z/zipper #(not= (:type %) :text)
-            :children
+  (z/zipper ;;#(not= (:type %) :text)
+            map?
+            #(do
+               ;;(println "\n\nParent Node")
+               ;;(pprint %)
+               ;;(println "\nListing children")
+               ;;(pprint (:children %))
+               (-> % :children seq))
             (fn [node children]
-              (assoc node :children (vec children)))
+              ;;(assoc node :children (vec children))
+              ;;(println "\n\nAppending a new child")
+              ;;(println "Node")
+              ;;(pprint node)
+              ;;(println "\nNew Children")
+              ;;(pprint children)
+              (assoc node :children (vec children))
+              ;;children
+              )
             doc))
 
 (let [lines lines
@@ -318,6 +345,7 @@
           (do
             ;;(println new-doc)
             ;;(println "PATH")
+            (println line)
             ;;(println (get-iid-path new-doc))
             ;;(println new-context)
             ;;(println transition)

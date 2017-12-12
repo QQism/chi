@@ -55,6 +55,24 @@
       (re-matches line)
       nil? not))
 
+(defn create-preserve [text]
+  {:type :preserve
+   :iid (get-iid)
+   :value text})
+
+(defn create-error
+  ([description block-text]
+   {:type :error
+    :level 1
+    :iid (get-iid)
+    :children [(create-paragraph description)
+               (create-preserve block-text)]})
+  ([description]
+   {:type :error
+    :level 1
+    :iid (get-iid)
+    :children [(create-paragraph description)]}))
+
 (defn create-inline-markup-text [text]
   ;; TODO: parse the text into an vector of text
   ;; if there are inline-markups, parse them accordingly
@@ -80,6 +98,13 @@
    :iid (get-iid)
    :children (create-inline-markup-text text)})
 
+(defn create-transition []
+  {:type :transition
+   :iid (get-iid)})
+
+(defn append-error [node-loc error]
+  (-> node-loc (z/append-child error)))
+
 (defn append-section [node-loc section]
   ;; Append the section as the new child of the current node location
   ;; Move the location to the position of the new child
@@ -87,6 +112,9 @@
       (z/append-child section)
       z/down
       z/rightmost))
+
+(defn append-transition [node-loc transition]
+  (-> node-loc (z/append-child transition)))
 
 (defn find-child-loc [doc-loc child-iid]
   (some #(if (= (:iid (z/node %)) child-iid) %)
@@ -123,6 +151,14 @@
       (append-section matched-parent-section new-section)
       (append-section doc new-section))))
 
+(defn create-error-doc-end-with-transition [doc]
+  (let [error (create-error "Document may not end with a transition.")]
+    (append-error doc error)))
+
+(defn create-transition-line->blank [doc context lines]
+  (let [transition (create-transition)]
+    (append-transition doc transition)))
+
 (def body->blank {:name :blank,
                   :state :body,
                   :parse (fn [doc context lines]
@@ -130,19 +166,24 @@
 
 (def body->line {:name :line,
                  :state :body,
-                 :parse (fn [doc context line]
-                          (let [next-state :line]
-                            [doc context next-state]))})
+                 :parse (fn [doc context lines]
+                          (let [next-state :line
+                                idx (:current-idx context)
+                                line (nth lines idx)]
+                            [doc (-> context
+                                     (update :current-idx inc)
+                                     (update :remains conj line)
+                                     (update :states conj next-state))]))})
 
 (defn append-text [doc block-text]
   (let [paragraph (create-paragraph block-text)]
     (do
-      (println "[Current Loc]")
-      (pprint doc)
-      (println (str "[Path IID] "(get-iid-path doc)))
-      (println "\n")
-      (println (str "[Paragraph] " block-text))
-      (pprint paragraph)
+      ;;(println "[Current Loc]")
+      ;;(pprint doc)
+      ;;(println (str "[Path IID] "(get-iid-path doc)))
+      ;;(println "\n")
+      ;;(println (str "[Paragraph] " block-text))
+      ;;(pprint paragraph)
       (-> doc
           ;;z/up
           (z/append-child paragraph)))))
@@ -168,11 +209,49 @@
                          (assoc :remains [])
                          (update :current-idx inc))])))))})
 
-(def line->blank {:name :blank,
-                  :state :line})
+(def line->blank {:name :blank
+                  :state :line
+                  :parse (fn [doc context lines]
+                           ;; Check if it is the last line of the document
+                           ;; - Y: Raise error
+                           ;; - N: Create a transition
+                           (loop [current-context context]
+                             (let [{idx :current-idx} current-context]
+                               (if (< idx (count lines))
+                                 (let [line (nth lines idx)]
+                                   (if (match-transition :blank line)
+                                     (recur (-> current-context
+                                                (update :current-idx inc)))
+                                     [(create-transition-line->blank doc
+                                                                     current-context
+                                                                     lines)
+                                      (-> current-context
+                                          (assoc :remains [])
+                                          (update :states pop))]))
+                                 [(-> doc
+                                      (create-transition-line->blank current-context
+                                                                     lines)
+                                      (create-error-doc-end-with-transition))
+                                  (-> current-context
+                                      (assoc :remains [])
+                                      (update :states pop))]))))})
 
 (def line->text {:name :text,
-                 :state :line})
+                 :state :line
+                 :parse (fn [doc context lines]
+                          ;; Read the next lines
+                          ;; If it is a lines
+                          ;; - Y: Check if overline and underline are matched
+                          ;;   - Y: Create a section
+                          ;;   - N: Raise error
+                          ;; - N: Raise error
+                          )})
+
+(def line->line {:name :line,
+                 :state :line
+                 :parse (fn [doc context lines]
+                          ;; Append the error message
+                          )})
 
 (def text->blank {:name :blank,
                   :state :text,
@@ -183,8 +262,7 @@
                               (-> context
                                   (assoc :remains [])
                                   (update :current-idx inc)
-                                  (update :states pop))]
-                             ))})
+                                  (update :states pop))]))})
 
 (def text->text {:name :text,
                  :state :text,
@@ -294,7 +372,7 @@
 
 (def states
   {:body      {:transitions [body->blank body->line body->text]}
-   :line      {:transitions [line->blank line->text]}
+   :line      {:transitions [line->blank line->text line->line]}
    :text      {:transitions [text->blank text->line text->text]}})
 
 (defn next-transition [state line]
@@ -304,20 +382,18 @@
 (defn parse [doc context transition lines]
   (-> transition :parse (apply [doc context lines])))
 
-(def lines (-> (io/resource "demo.rst")
+(def content-lines (-> (io/resource "demo.rst")
                slurp
                (string/split #"\r|\n")
-               (->> (map string/trim))))
+               ;; Remove right whitespaces
+               (->> (map string/trimr))
+               ;; Become a vector, giving the random access with 0(1) complexity
+               vec))
 
 (defn zip-doc [doc]
   (z/zipper ;;#(not= (:type %) :text)
             map?
-            #(do
-               ;;(println "\n\nParent Node")
-               ;;(pprint %)
-               ;;(println "\nListing children")
-               ;;(pprint (:children %))
-               (-> % :children seq))
+            #(-> % :children seq)
             (fn [node children]
               ;;(assoc node :children (vec children))
               ;;(println "\n\nAppending a new child")
@@ -325,18 +401,19 @@
               ;;(pprint node)
               ;;(println "\nNew Children")
               ;;(pprint children)
-              (assoc node :children (vec children))
-              ;;children
-              )
+              (assoc node :children (vec children)))
             doc))
 
-(let [lines lines
+(let [lines (conj content-lines "") ;; The last blank line, avoid the parser being stuck in the middle of a specific state without exiting
       lines-count (count lines)
-      init-context {:states [:body], :current-idx 0, :remains []}
+      init-context {:states [:body]
+                    :current-idx 0
+                    :remains []
+                    :warning-level 1}
       init-doc (zip-doc {:type :root, :iid 1, :children []})]
   (loop [doc init-doc
          context init-context]
-    (let [{:keys [states, current-idx]} context
+    (let [{:keys [states, current-idx, remains]} context
           current-state (peek states)]
       (if (< current-idx lines-count)
         (let [line (nth lines current-idx)
@@ -347,8 +424,8 @@
             ;;(println "PATH")
             (println line)
             ;;(println (get-iid-path new-doc))
-            ;;(println new-context)
-            ;;(println transition)
+            (println new-context)
+            (println transition)
             (recur new-doc new-context)))
         (z/root doc)))))
 

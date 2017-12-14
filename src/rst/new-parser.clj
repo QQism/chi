@@ -60,19 +60,6 @@
    :iid (get-iid)
    :value text})
 
-(defn create-error
-  ([description block-text]
-   {:type :error
-    :level 1
-    :iid (get-iid)
-    :children [(create-paragraph description)
-               (create-preserve block-text)]})
-  ([description]
-   {:type :error
-    :level 1
-    :iid (get-iid)
-    :children [(create-paragraph description)]}))
-
 (defn create-inline-markup-text [text]
   ;; TODO: parse the text into an vector of text
   ;; if there are inline-markups, parse them accordingly
@@ -101,6 +88,19 @@
 (defn create-transition []
   {:type :transition
    :iid (get-iid)})
+
+(defn create-error
+  ([description block-text]
+   {:type :error
+    :level 1
+    :iid (get-iid)
+    :children [(create-paragraph description)
+               (create-preserve block-text)]})
+  ([description]
+   {:type :error
+    :level 1
+    :iid (get-iid)
+    :children [(create-paragraph description)]}))
 
 (defn append-error [node-loc error]
   (-> node-loc (z/append-child error)))
@@ -137,25 +137,81 @@
                 current-loc
                 (recur section-loc (inc depth))))))))))
 
-(defn create-section-text->line [doc context lines]
-  ;; create the new section
+(defn append-section-in-matched-location [doc section]
   ;; Find the matching parent section location
   ;; Append the new section as a child of the current path
-  (let [{idx :current-idx remains :remains} context
-        text (peek remains)
-        line (nth lines idx)
-        new-section (create-section text line "underline")
-        style (:style new-section)
-        current-iid-path (get-iid-path doc)]
+  (let [style (:style section)]
     (if-let [matched-parent-section (find-matching-section-loc doc style)]
-      (append-section matched-parent-section new-section)
-      (append-section doc new-section))))
+      (append-section matched-parent-section section)
+      (append-section doc section))))
 
-(defn create-error-doc-end-with-transition [doc]
+(defn append-error-section-title-too-short [doc style text-lines]
+  (let [block-text (string/join "\r\n" text-lines)
+        error (create-error (str "Title " style " too short." )
+                            block-text)]
+    (append-error doc error)))
+
+(defn append-error-section-mismatching-underline [doc text-lines]
+  (let [block-text (string/join "\r\n" text-lines)
+        error (create-error "Missing matching underline for section title overline."
+                            block-text)]
+    (append-error doc error)))
+
+(defn append-error-section-mismatching-overline-underline [doc text-lines]
+  (let [block-text (string/join "\r\n" text-lines)
+        error (create-error "Title overline & underline mismatch."
+                            block-text)]
+    (append-error doc error)))
+
+(defn append-error-incomplete-section-title [doc text-lines]
+  (let [block-text (string/join "\r\n" text-lines)
+        error (create-error "Incomplete section title."
+                            block-text)]
+    (append-error doc error)))
+
+(defn is-section-title-short? [style text-lines]
+  (case style
+    "underline"
+    (let [[text underline] text-lines]
+      (< (count underline) (count text)))
+    "overline"
+    (let [[overline text _] text-lines]
+      (< (count overline) (count text)))
+    false))
+
+(defn append-applicable-error-section-title-too-short [doc style text-lines]
+  (if (is-section-title-short? style text-lines)
+    (append-error-section-title-too-short doc style text-lines)
+    doc))
+
+(defn append-section-line->text-line [doc context lines]
+  (let [{idx :current-idx text-lines :remains} context
+        [overline text] text-lines
+        underline-line (nth lines idx)
+        new-text-lines (conj text-lines text)
+        section-style "overline"
+        new-section (create-section text overline section-style)]
+    (-> doc (append-section-in-matched-location new-section)
+        (append-applicable-error-section-title-too-short section-style
+                                                         new-text-lines))))
+
+(defn append-section-text->line [doc context lines]
+  (let [{idx :current-idx text-lines :remains} context
+        text (peek text-lines)
+        underline (nth lines idx)
+        new-text-lines (conj text-lines underline)
+        section-style "underline"
+        new-section (create-section text underline section-style)]
+    (-> doc
+        (append-section-in-matched-location new-section)
+        (append-applicable-error-section-title-too-short section-style
+                                                         new-text-lines))))
+
+(defn append-error-doc-end-with-transition [doc]
   (let [error (create-error "Document may not end with a transition.")]
     (append-error doc error)))
 
-(defn create-transition-line->blank [doc context lines]
+(defn append-transition-line->blank [doc context lines]
   (let [transition (create-transition)]
     (append-transition doc transition)))
 
@@ -222,16 +278,16 @@
                                    (if (match-transition :blank line)
                                      (recur (-> current-context
                                                 (update :current-idx inc)))
-                                     [(create-transition-line->blank doc
+                                     [(append-transition-line->blank doc
                                                                      current-context
                                                                      lines)
                                       (-> current-context
                                           (assoc :remains [])
                                           (update :states pop))]))
                                  [(-> doc
-                                      (create-transition-line->blank current-context
+                                      (append-transition-line->blank current-context
                                                                      lines)
-                                      (create-error-doc-end-with-transition))
+                                      (append-error-doc-end-with-transition))
                                   (-> current-context
                                       (assoc :remains [])
                                       (update :states pop))]))))})
@@ -239,13 +295,72 @@
 (def line->text {:name :text,
                  :state :line
                  :parse (fn [doc context lines]
-                          ;; Read the next lines
+                          ;; Read the next line
                           ;; If it is a lines
                           ;; - Y: Check if overline and underline are matched
                           ;;   - Y: Create a section
-                          ;;   - N: Raise error
-                          ;; - N: Raise error
-                          )})
+                          ;;   - N: - If it is a short line (lesser than 4 char)
+                          ;;     - Y: switch to text state
+                          ;;     - N: Create an error
+                          ;; - N: - If it is a short line
+                          ;;   - Y: Switch to the text state
+                          ;;   - N: Create an error
+                          (let [{idx :current-idx, text-lines :remains} context
+                                current-text-line (nth lines idx)
+                                current-text-lines (conj text-lines current-text-line)
+                                next-idx (inc idx)
+                                prev-text-line (peek text-lines)
+                                prev-short-line? (< (count prev-text-line) 4)]
+                            (if (< next-idx (count lines))
+                              (let [next-text-line (nth lines next-idx)
+                                    next-text-lines (conj current-text-lines next-text-line)
+                                    next-context (-> context
+                                                     (update :current-idx inc)
+                                                     (assoc :remains current-text-lines))]
+                                (if (match-transition :line next-text-line)
+                                  (if (= prev-text-line next-text-line)
+                                    [(append-section-line->text-line doc next-context lines)
+                                     (-> next-context
+                                         (assoc :remains [])
+                                         (update :current-idx inc)
+                                         (update :states pop))]
+                                    (if prev-short-line?
+                                      [doc
+                                       (-> next-context
+                                           (assoc :remains next-text-lines)
+                                           (update :current-idx inc)
+                                           (update :states pop)
+                                           (update :states conj :text))]
+                                      [(append-error-section-mismatching-overline-underline doc next-text-lines)
+                                       (-> next-context
+                                           (assoc :remains [])
+                                           (update :current-idx inc)
+                                           (update :states pop))]
+                                      ))
+                                  (if prev-short-line?
+                                    [doc
+                                     (-> next-context
+                                         (assoc :remains next-text-lines)
+                                         (update :current-idx inc)
+                                         (update :states pop)
+                                         (update :states conj :text))]
+                                    [(append-error-section-mismatching-underline doc next-text-lines)
+                                     (-> next-context
+                                         (assoc :remains [])
+                                         (update :current-idx inc)
+                                         (update :states pop))])))
+                              (if prev-short-line?
+                                [doc
+                                 (-> context
+                                     (update :remains conj current-text-line)
+                                     (assoc :current-idx inc)
+                                     (update :states pop)
+                                     (update :states conj :text))]
+                                [(append-error-incomplete-section-title doc current-text-lines)
+                                 (-> context
+                                     (update :remains [])
+                                     (update :current-idx inc)
+                                     (update :status pop))]))))})
 
 (def line->line {:name :line,
                  :state :line
@@ -309,12 +424,12 @@
                             (if (< line-count (count text))
                               (if (< line-count 4)
                                 (-> text->text :parse (apply [doc context lines]))
-                                [(create-section-text->line doc context lines)
+                                [(append-section-text->line doc context lines)
                                  (-> context
                                      (assoc :remains [])
                                      (update :current-idx inc)
                                      (update :states pop))])
-                              [(create-section-text->line doc context lines)
+                              [(append-section-text->line doc context lines)
                                (-> context
                                    (assoc :remains [])
                                    (update :current-idx inc)
@@ -379,6 +494,17 @@
   (some #(and (match-transition (:name %) line) %)
         (-> states state :transitions)))
 
+;;(defn find-matched-transition [transitions name]
+;;  (some (fn [transition]
+;;          (if (-> transition :name (= name)) transition))
+;;        transitions))
+;;
+;;(find-matched-transition (:transitions (:text states)) :text)
+;;
+;;(-> states
+;;    :text
+;;    :transitions (find-matched-transition :text))
+
 (defn parse [doc context transition lines]
   (-> transition :parse (apply [doc context lines])))
 
@@ -441,3 +567,5 @@
 ;;     ;;z/root
 ;;     (get-iid-path)
 ;;     )
+
+;; Need a transition tree

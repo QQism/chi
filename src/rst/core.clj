@@ -1,4 +1,4 @@
-(ns rst.new-parser
+(ns rst.core
   (:require  [clojure.java.io :as io]
              [clojure.string :as string]
              [clojure.pprint :refer [pprint]]

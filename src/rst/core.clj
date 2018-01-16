@@ -4,9 +4,31 @@
              [clojure.pprint :refer [pprint]]
              [clojure.zip :as z]))
 
-(defn debug-node [node]
-  (let [{t :type id :iid s :style c :children} node]
-    {:t t :id id :s s :c c}))
+(defprotocol ReadingLines
+  (current-line [_])
+  (next-line [_])
+  (forward [_])
+  (eof? [_])
+  (eof-on-next? [_])
+  (add-state [_ state])
+  (pop-state [_])
+  (current-state [_])
+  (clear-remains [_]))
+
+(defrecord DocumentContext [lines current-idx states remains warning-level]
+  ReadingLines
+  (current-line [_] (nth lines current-idx))
+  (next-line [_] (nth lines (inc current-idx)))
+  (forward [_] (update _ :current-idx inc))
+  (eof? [_] (>= current-idx (count lines)))
+  (eof-on-next? [_] (>= (inc current-idx) (count lines)))
+  (add-state [_ state] (update _ :states conj state))
+  (pop-state [_] (update _ :states pop))
+  (current-state [_] (-> _ :states peek))
+  (clear-remains [_] (assoc _ :remains [])))
+
+(defn make-context [lines]
+  (DocumentContext. lines 0 [:body] [] 1))
 
 (def iid-counter (atom 0))
 
@@ -17,6 +39,7 @@
   (-> doc
       z/path
       (->> (map :iid))
+      (conj (:iid (z/node doc)))
       reverse))
 
 (defn up-to-root [doc]
@@ -38,16 +61,20 @@
       string/lower-case))
 
 (def patterns
-  {:blank #" *$"
-   :line #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
-   :indent #" +"
-   :text #".+"})
+  {:blank   #" *$"
+   :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
+   :indent  #" +"
+   :bullet  #"([-+*\u2022\u2023\u2043])(\s+)(.*|$)"
+   :text    #".+"})
+
+(re-matches (:bullet patterns) "- this")
 
 (def transition-patterns
-  {:line      {:pattern (:line patterns)}
-   :underline {:pattern (:line patterns)}
-   :text      {:pattern (:text patterns)}
-   :blank     {:pattern (:blank patterns)}})
+  {:blank     {:pattern (:blank patterns)}
+   ;;:indent    {:pattern (:indent patterns)}
+   ;;:bullet    {:pattern (:bullet patterns)}
+   :line      {:pattern (:line patterns)}
+   :text      {:pattern (:text patterns)}})
 
 (defn match-transition [transition-name line]
   (-> (transition-name transition-patterns)
@@ -116,10 +143,13 @@
 (defn append-transition [node-loc transition]
   (-> node-loc (z/append-child transition)))
 
-(defn find-child-loc [doc-loc child-iid]
-  (some #(if (= (:iid (z/node %)) child-iid) %)
-        (children-loc doc-loc)))
+(defn find-loc-with-iid [doc-loc child-iid]
+  (if (-> doc-loc z/node :iid (= child-iid))
+    doc-loc
+    (some #(if (-> % z/node :iid (= child-iid)) %)
+          (children-loc doc-loc))))
 
+;; TODO: add the current loc id to path
 (defn find-matching-section-loc [doc-loc style]
   ;; Travel in the whole doc from top to the current path
   ;; - if there is a section having the same style as the new section
@@ -128,10 +158,10 @@
   ;;   | return nil
   (let [current-iid-path (get-iid-path doc-loc)]
     (loop [current-loc (up-to-root doc-loc)
-           depth 1]
+           depth 0]
       (if (< depth (count current-iid-path))
         (let [current-iid (nth current-iid-path depth)]
-          (if-let [section-loc (find-child-loc current-loc current-iid)]
+          (if-let [section-loc (find-loc-with-iid current-loc current-iid)]
             (let [section (z/node section-loc)]
               (if (= (:style section) style)
                 current-loc
@@ -211,7 +241,7 @@
   (let [error (create-error "Document may not end with a transition.")]
     (append-error doc error)))
 
-(defn append-transition-line->blank [doc context lines]
+(defn append-transition-line->blank [doc]
   (let [transition (create-transition)]
     (append-transition doc transition)))
 
@@ -278,15 +308,12 @@
                                    (if (match-transition :blank line)
                                      (recur (-> current-context
                                                 (update :current-idx inc)))
-                                     [(append-transition-line->blank doc
-                                                                     current-context
-                                                                     lines)
+                                     [(append-transition-line->blank doc)
                                       (-> current-context
                                           (assoc :remains [])
                                           (update :states pop))]))
                                  [(-> doc
-                                      (append-transition-line->blank current-context
-                                                                     lines)
+                                      (append-transition-line->blank)
                                       (append-error-doc-end-with-transition))
                                   (-> current-context
                                       (assoc :remains [])
@@ -485,10 +512,58 @@
 ;;
 ;;
 
+(def body->indent {:name :indent,
+                   :state :body,
+                   :parse (fn [doc context lines])})
+
+(def body->bullet {:name :bullet,
+                   :state :body,
+                   :parse (fn [doc context lines]
+                            )})
+
+(def body->enum {:name :enum,
+                 :state :body,
+                 :parse (fn [doc context lines])})
+
+(def body->field-marker {:name :enum,
+                         :state :body,
+                         :parse (fn [doc context lines])})
+
+(def body->option-marker {:name :enum,
+                         :state :body,
+                         :parse (fn [doc context lines])})
+
 (def states
-  {:body      {:transitions [body->blank body->line body->text]}
-   :line      {:transitions [line->blank line->text line->line]}
-   :text      {:transitions [text->blank text->line text->text]}})
+  {:body           {:transitions [body->blank
+                                  ;;body->indent
+                                  ;;body->bullet
+                                  ;;body->enum
+                                  ;;body->field-marker
+                                  ;;body->option-marker
+                                  ;;body->doctest
+                                  ;;body->line-block
+                                  ;;body->grid-table-top
+                                  ;;body->simple-table-top
+                                  ;;body->explicit-markup
+                                  ;;body->anonymous
+                                  body->line
+                                  body->text]}
+   :line           {:transitions [line->blank line->text line->line]}
+   :text           {:transitions [text->blank text->line text->text]}
+   :bullet-list    {:transitions [body->blank
+                                  ;;bullet->indent
+                                  ;;bullet->bullet
+                                  ;;bullet->enum
+                                  ;;bullet->field-marker
+                                  ;;bullet->option-marker
+                                  ;;bullet->doctest
+                                  ;;bullet->line-block
+                                  ;;bullet->grid-table-top
+                                  ;;bullet->simple-table-top
+                                  ;;bullet->explicit-markup
+                                  ;;bullet->anonymous
+                                  body->line
+                                  body->text]}})
 
 (defn next-transition [state line]
   (some #(and (match-transition (:name %) line) %)
@@ -505,10 +580,10 @@
 ;;    :text
 ;;    :transitions (find-matched-transition :text))
 
-(defn parse [doc context transition lines]
-  (-> transition :parse (apply [doc context lines])))
+(defn parse [doc context transition]
+  (-> transition :parse (apply [doc context (:lines context)])))
 
-(def content-lines (-> (io/resource "demo.rst")
+(def content-lines (-> (io/resource "simple-sections.rst")
                slurp
                (string/split #"\r|\n")
                ;; Remove right whitespaces
@@ -516,56 +591,57 @@
                ;; Become a vector, giving the random access with 0(1) complexity
                vec))
 
+(re-matches #" {1}(.*)" " - Hello")
+
+(defn read-indented-lines [lines context indent]
+  (let [{current-idx :current-idx remains :remains} context
+        indented-pattern (re-pattern (str " {" indent "}(.*)"))]
+    (loop [indented-lines remains
+           idx current-idx]
+      (if (< idx (count lines))
+        (let [line (nth lines idx)]
+          (if-let [match (re-matches indented-pattern line)]
+            (recur (conj indented-lines (nth match 1)) (inc idx))
+            (if (match-transition :blank line)
+              (recur indented-lines (inc idx))
+              [indented-lines
+               (-> context
+                   (assoc :remains [])
+                   (assoc :current-idx idx))])))
+        [indented-lines
+         (-> context
+             (assoc :remains [])
+             (assoc :current-idx idx))]))))
+
+(read-indented-lines content-lines {:current-idx 2 :remains ["First Item"]} 2)
+
 (defn zip-doc [doc]
   (z/zipper ;;#(not= (:type %) :text)
             map?
             #(-> % :children seq)
             (fn [node children]
-              ;;(assoc node :children (vec children))
-              ;;(println "\n\nAppending a new child")
-              ;;(println "Node")
-              ;;(pprint node)
-              ;;(println "\nNew Children")
-              ;;(pprint children)
               (assoc node :children (vec children)))
             doc))
 
-(let [lines (conj content-lines "") ;; The last blank line, avoid the parser being stuck in the middle of a specific state without exiting
-      lines-count (count lines)
-      init-context {:states [:body]
-                    :current-idx 0
-                    :remains []
-                    :warning-level 1}
-      init-doc (zip-doc {:type :root, :iid 1, :children []})]
-  (loop [doc init-doc
-         context init-context]
-    (let [{:keys [states, current-idx, remains]} context
-          current-state (peek states)]
-      (if (< current-idx lines-count)
-        (let [line (nth lines current-idx)
-              transition (next-transition current-state line)
-              [new-doc new-context] (parse doc context transition lines)]
-          (do
-            ;;(println new-doc)
-            ;;(println "PATH")
-            (println line)
-            ;;(println (get-iid-path new-doc))
-            (println new-context)
-            (println transition)
-            (recur new-doc new-context)))
-        (z/root doc)))))
+(defn process-document [document-lines]
+  (let [lines (conj document-lines "") ;; The last blank line, avoid the parser being stuck in the middle of a specific state without exiting
+        init-context (make-context lines)
+        init-doc (zip-doc {:type :root, :iid 1, :children []})]
+   (loop [doc init-doc
+          context init-context]
+     (if (not (eof? context))
+       (let [line (current-line context)
+             current-state (current-state context)
+             transition (next-transition current-state line)
+             [new-doc new-context] (parse doc context transition)]
+         (do
+           ;;(println new-doc)
+           ;;(println "PATH")
+           ;;(println line)
+           ;;(println (get-iid-path new-doc))
+           ;;(println new-context)
+           ;;(println transition)
+           (recur new-doc new-context)))
+       (z/root doc)))))
 
-;; (def test-section-1 (create-section "Test 1" "======" "underline"))
-;; (def test-section-2 (create-section "Test 2" "======" "underline"))
-;; (def test-section-3 (create-section "Test 3" "======" "underline"))
-;; 
-;; 
-;; (-> (zip-doc {:type :root, :iid 1, :children []})
-;;     (append-section test-section-1)
-;;     (append-section test-section-2)
-;;     (append-section test-section-3)
-;;     ;;z/root
-;;     (get-iid-path)
-;;     )
-
-;; Need a transition tree
+(process-document content-lines)

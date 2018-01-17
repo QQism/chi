@@ -277,11 +277,75 @@
                                                 [(contains
                                                   {:type :text
                                                    :value "Title overline too short."})])})
-                                   (contains {:type :preserve
-                                              :value "===\r\nSection Title\r\n==="})])})
+                                   (contains
+                                    {:type :preserve
+                                     :value "===\r\nSection Title\r\n==="})])})
             paragraph => (contains
                           {:type :paragraph
                            :children (just
                                       [(contains
                                         {:type :text
                                          :value "Paragraph content"})])})))))
+
+(fact "Title overline is missing underline and longer than 3 characters"
+      (let [lines ["===="
+                   "Section Title"
+                   "Paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [error (-> root :children first)]
+          error => (contains
+                    {:type :error
+                     :children (just
+                                [(contains
+                                  {:type :paragraph
+                                   :children (just
+                                              [(contains
+                                                {:type :text
+                                                 :value "Missing matching underline for section title overline."})])})
+                                 (contains
+                                  {:type :preserve
+                                   :value "====\r\nSection Title\r\nParagraph content"})])}))))
+
+(fact "Title overline and underline are mismatched and longer than 3 characters"
+      (let [lines ["===="
+                   "Section Title"
+                   "=="
+                   "Paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 2))})
+        (let [[error paragraph] (:children root)]
+          error => (contains
+                    {:type :error
+                     :children (just
+                                [(contains
+                                  {:type :paragraph
+                                   :children (just
+                                              [(contains
+                                                {:type :text
+                                                 :value "Title overline & underline mismatch."})])})
+                                 (contains
+                                  {:type :preserve
+                                   :value "====\r\nSection Title\r\n=="})
+                                 ])})
+          paragraph => (contains
+                        {:type :paragraph
+                         :children (just
+                                    [(contains
+                                      {:type :text
+                                       :value "Paragraph content"})])}))))
+
+(fact "Title overline and underline are mismatched and not longer than 3 characters"
+      (let [lines ["==="
+                   "Section Title"
+                   "=="
+                   "Paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [paragraph (-> root :children first)]
+          paragraph => (contains
+                        {:type :paragraph
+                         :children (just
+                                    [(contains
+                                      {:type :text
+                                       :value "=== Section Title == Paragraph content"})])}))))

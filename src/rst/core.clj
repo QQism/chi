@@ -10,9 +10,11 @@
   (forward [_])
   (eof? [_])
   (eof-on-next? [_])
-  (add-state [_ state])
+  (push-state [_ state])
   (pop-state [_])
   (current-state [_])
+  (add-line-to-remains [_ line])
+  (update-remains [_ lines])
   (clear-remains [_])
   (remains? [_]))
 
@@ -23,10 +25,12 @@
   (forward [_] (update _ :current-idx inc))
   (eof? [_] (>= current-idx (count lines)))
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
-  (add-state [_ state] (update _ :states conj state))
+  (push-state [_ state] (update _ :states conj state))
   (pop-state [_] (update _ :states pop))
   (current-state [_] (-> _ :states peek))
-  (clear-remains [_] (assoc _ :remains []))
+  (add-line-to-remains [_ line] (update _ :remains conj line))
+  (update-remains [_ lines] (assoc _ :remains lines))
+  (clear-remains [_] (update-remains _ []))
   (remains? [_] (-> _ :remains empty? not)))
 
 (defn make-context [lines]
@@ -250,7 +254,7 @@
 (def body->blank {:name :blank,
                   :state :body,
                   :parse (fn [doc context lines]
-                           [doc (update context :current-idx inc)])})
+                           [doc (-> context forward)])})
 
 (def body->line {:name :line,
                  :state :body,
@@ -259,9 +263,9 @@
                                 idx (:current-idx context)
                                 line (nth lines idx)]
                             [doc (-> context
-                                     (update :current-idx inc)
-                                     (update :remains conj line)
-                                     (update :states conj next-state))]))})
+                                     forward
+                                     (add-line-to-remains line)
+                                     (push-state next-state))]))})
 
 (defn append-text [doc block-text]
   (let [paragraph (create-paragraph block-text)]
@@ -281,14 +285,14 @@
                   (if (< (inc current-idx) lines-count)
                     [doc
                      (-> context
-                         (update :remains conj line)
-                         (update :current-idx inc)
-                         (update :states conj :text))]
+                         (add-line-to-remains line)
+                         forward
+                         (push-state :text))]
                     ;; next line if EOF
                     [(append-text doc (string/join " " text-lines))
                      (-> context
-                         (assoc :remains [])
-                         (update :current-idx inc))])))))})
+                         clear-remains
+                         forward)])))))})
 
 (def line->blank {:name :blank
                   :state :line
@@ -301,18 +305,17 @@
                                (if (< idx (count lines))
                                  (let [line (nth lines idx)]
                                    (if (match-transition :blank line)
-                                     (recur (-> current-context
-                                                (update :current-idx inc)))
+                                     (recur (-> current-context forward))
                                      [(append-transition-line->blank doc)
                                       (-> current-context
-                                          (assoc :remains [])
-                                          (update :states pop))]))
+                                          clear-remains
+                                          pop-state)]))
                                  [(-> doc
                                       (append-transition-line->blank)
                                       (append-error-doc-end-with-transition))
                                   (-> current-context
-                                      (assoc :remains [])
-                                      (update :states pop))]))))})
+                                      clear-remains
+                                      pop-state)]))))})
 
 (def line->text {:name :text,
                  :state :line
@@ -337,52 +340,51 @@
                               (let [next-text-line (nth lines next-idx)
                                     next-text-lines (conj current-text-lines next-text-line)
                                     next-context (-> context
-                                                     (update :current-idx inc)
-                                                     (assoc :remains current-text-lines))]
+                                                     forward
+                                                     (update-remains current-text-lines))]
                                 (if (match-transition :line next-text-line)
                                   (if (= prev-text-line next-text-line)
                                     [(append-section-line->text-line doc next-context lines)
                                      (-> next-context
-                                         (assoc :remains [])
-                                         (update :current-idx inc)
-                                         (update :states pop))]
+                                         forward
+                                         clear-remains
+                                         pop-state)]
                                     (if prev-short-line?
                                       [doc
                                        (-> next-context
-                                           (assoc :remains next-text-lines)
-                                           (update :current-idx inc)
-                                           (update :states pop)
-                                           (update :states conj :text))]
+                                           forward
+                                           (update-remains next-text-lines)
+                                           pop-state
+                                           (push-state :text))]
                                       [(append-error-section-mismatching-overline-underline doc next-text-lines)
                                        (-> next-context
-                                           (assoc :remains [])
-                                           (update :current-idx inc)
-                                           (update :states pop))]
-                                      ))
+                                           forward
+                                           clear-remains
+                                           pop-state)]))
                                   (if prev-short-line?
                                     [doc
                                      (-> next-context
-                                         (assoc :remains next-text-lines)
-                                         (update :current-idx inc)
-                                         (update :states pop)
-                                         (update :states conj :text))]
+                                         forward
+                                         (update-remains next-text-lines)
+                                         pop-state
+                                         (push-state :text))]
                                     [(append-error-section-mismatching-underline doc next-text-lines)
                                      (-> next-context
-                                         (assoc :remains [])
-                                         (update :current-idx inc)
-                                         (update :states pop))])))
+                                         forward
+                                         clear-remains
+                                         pop-state)])))
                               (if prev-short-line?
                                 [doc
                                  (-> context
-                                     (update :remains conj current-text-line)
-                                     (update :current-idx inc)
-                                     (update :states pop)
-                                     (update :states conj :text))]
+                                     forward
+                                     (add-line-to-remains current-text-line)
+                                     pop-state
+                                     (push-state :text))]
                                 [(append-error-incomplete-section-title doc current-text-lines)
                                  (-> context
-                                     (assoc :remains [])
-                                     (update :current-idx inc)
-                                     (update :status pop))]))))})
+                                     forward
+                                     clear-remains
+                                     pop-state)]))))})
 
 (def line->line {:name :line,
                  :state :line
@@ -397,9 +399,9 @@
                                  block-text (string/join " " text-lines)]
                              [(append-text doc block-text)
                               (-> context
-                                  (assoc :remains [])
-                                  (update :current-idx inc)
-                                  (update :states pop))]))})
+                                  forward
+                                  clear-remains
+                                  pop-state)]))})
 
 (def text->text {:name :text,
                  :state :text,
@@ -413,19 +415,19 @@
                                 (let [line (nth lines idx)]
                                   (if (not (match-transition :blank line))
                                     (recur (-> current-context
-                                               (update :current-idx inc)
-                                               (update :remains conj line)))
+                                               forward
+                                               (add-line-to-remains line)))
                                     ;; blank line, create paragraph & return
                                     [(append-text doc block-text)
                                      (-> current-context
-                                         (assoc :remains [])
-                                         (update :states pop))]))
+                                         clear-remains
+                                         pop-state)]))
                                 ;; EOF, create paragraph & return
                                 [(append-text doc block-text)
                                  (-> current-context
-                                     (assoc :remains [])
-                                     (update :current-idx inc)
-                                     (update :states pop))]))))})
+                                     forward
+                                     clear-remains
+                                     pop-state)]))))})
 
 (def text->line {:name :line,
                  :state :text,
@@ -448,14 +450,14 @@
                                 (-> text->text :parse (apply [doc context lines]))
                                 [(append-section-text->line doc context lines)
                                  (-> context
-                                     (assoc :remains [])
-                                     (update :current-idx inc)
-                                     (update :states pop))])
+                                     forward
+                                     clear-remains
+                                     pop-state)])
                               [(append-section-text->line doc context lines)
                                (-> context
-                                   (assoc :remains [])
-                                   (update :current-idx inc)
-                                   (update :states pop))])))})
+                                   forward
+                                   clear-remains
+                                   pop-state)])))})
 
 
 (def doc-sample

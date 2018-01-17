@@ -7,4 +7,5 @@
                  [org.clojure/core.match "0.3.0-alpha5"]
                  [hiccup "1.0.5"]]
   :profiles {:dev {:dependencies [[midje "1.9.0" :exclusions [org.clojure/clojure]]]
-                   :plugins [[lein-midje "3.2.1"]]}})
+                   :plugins [[lein-midje "3.2.1"]
+                             [lein-cloverage "1.0.10"]]}})

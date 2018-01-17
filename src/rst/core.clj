@@ -13,7 +13,8 @@
   (add-state [_ state])
   (pop-state [_])
   (current-state [_])
-  (clear-remains [_]))
+  (clear-remains [_])
+  (remains? [_]))
 
 (defrecord DocumentContext [lines current-idx states remains warning-level]
   ReadingLines
@@ -25,7 +26,8 @@
   (add-state [_ state] (update _ :states conj state))
   (pop-state [_] (update _ :states pop))
   (current-state [_] (-> _ :states peek))
-  (clear-remains [_] (assoc _ :remains [])))
+  (clear-remains [_] (assoc _ :remains []))
+  (remains? [_] (-> _ :remains empty? not)))
 
 (defn make-context [lines]
   (DocumentContext. lines 0 [:body] [] 1))
@@ -92,7 +94,7 @@
   ;; if there are inline-markups, parse them accordingly
   [{:type :text
     :iid (get-iid)
-    :value text}])
+    :value (string/trimr text)}])
 
 (defn create-header [text line]
   {:type :header,
@@ -380,12 +382,12 @@
                                 [doc
                                  (-> context
                                      (update :remains conj current-text-line)
-                                     (assoc :current-idx inc)
+                                     (update :current-idx inc)
                                      (update :states pop)
                                      (update :states conj :text))]
                                 [(append-error-incomplete-section-title doc current-text-lines)
                                  (-> context
-                                     (update :remains [])
+                                     (assoc :remains [])
                                      (update :current-idx inc)
                                      (update :status pop))]))))})
 
@@ -623,8 +625,15 @@
               (assoc node :children (vec children)))
             doc))
 
+(defn clean-up-remains [doc context]
+  (if (remains? context)
+    (let [current-state (current-state context)
+          transition (next-transition current-state "")]
+      (first (parse doc context transition)))
+    doc))
+
 (defn process-document [document-lines]
-  (let [lines (conj document-lines "") ;; The last blank line, avoid the parser being stuck in the middle of a specific state without exiting
+  (let [lines document-lines
         init-context (make-context lines)
         init-doc (zip-doc {:type :root, :iid 1, :children []})]
    (loop [doc init-doc
@@ -642,6 +651,8 @@
            ;;(println new-context)
            ;;(println transition)
            (recur new-doc new-context)))
-       (z/root doc)))))
+       (-> doc
+           (clean-up-remains context)
+           z/root)))))
 
 (process-document content-lines)

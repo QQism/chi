@@ -349,3 +349,35 @@
                                     [(contains
                                       {:type :text
                                        :value "=== Section Title == Paragraph content"})])}))))
+
+(fact "Title overline is incomplete and longer than 3 characters"
+      (let [lines ["===="
+                   "Section Title"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [error (-> root :children first)]
+          error => (contains
+                    {:type :error
+                     :children (just
+                                [(contains
+                                  {:type :paragraph
+                                   :children (just
+                                              [(contains
+                                                {:type :text
+                                                 :value "Incomplete section title."})])})
+                                 (contains
+                                  {:type :preserve
+                                   :value "====\r\nSection Title"})])}))))
+
+(fact "Title overline is incomplete and not longer than 3 characters"
+      (let [lines ["==="
+                   "Section Title"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [paragraph (-> root :children first)]
+          paragraph => (contains
+                        {:type :paragraph
+                         :children (just
+                                    [(contains
+                                      {:type :text
+                                       :value "=== Section Title"})])}))))

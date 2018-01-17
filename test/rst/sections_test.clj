@@ -26,7 +26,32 @@
                                         {:type :text
                                          :value "Section paragraph content"})])})))))
 
-(fact "Two sections with single line paragraphs"
+(fact "Single overline section with single line paragraph"
+      (let [lines ["============="
+                   "Section Title"
+                   "============="
+                   "Section paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [section (-> root :children first)]
+          section => (contains {:type :section
+                                :style "overline="
+                                :children #(-> % count (= 2))})
+          (let [[header paragraph] (:children section)]
+            header => (contains
+                       {:type :header
+                        :children (just
+                                   [(contains
+                                     {:type :text
+                                      :value "Section Title"})])})
+            paragraph => (contains
+                          {:type :paragraph
+                           :children (just
+                                      [(contains
+                                        {:type :text
+                                         :value "Section paragraph content"})])})))))
+
+(fact "Two sections on the same level with single line paragraphs"
       (let [lines ["First Title"
                    "==========="
                    "First paragraph content"
@@ -37,10 +62,16 @@
             root (process-document lines)]
         root => (contains {:type :root :children #(-> % count (= 2))})
         (let [[first-section second-section] (:children root)]
-          first-section => (contains {:type :section :style "underline=" :children #(-> % count (= 2))})
-          second-section => (contains {:type :section :style "underline=" :children #(-> % count (= 2))})
-          (let [[first-header first-paragraph] (-> first-section :children)
-                [second-header second-paragraph] (-> second-section :children)]
+          first-section => (contains
+                            {:type :section
+                             :style "underline="
+                             :children #(-> % count (= 2))})
+          second-section => (contains
+                             {:type :section
+                              :style "underline="
+                              :children #(-> % count (= 2))})
+          (let [[first-header first-paragraph] (:children first-section)
+                [second-header second-paragraph] (:children second-section)]
             first-header => (contains
                              {:type :header
                               :children (just
@@ -67,3 +98,190 @@
                                                 :value "Second paragraph content"})])})))))
 
 
+(fact "Nested sections with single line paragraphs"
+      (let [lines ["First Title"
+                   "==========="
+                   "First paragraph content"
+                   ""
+                   "------------"
+                   "Nested Title"
+                   "------------"
+                   "Nested content"
+                   ""
+                   "Nested Nested Title"
+                   "+++++++++++++++++++"
+                   ""
+                   "Second Title"
+                   "============"
+                   "Second paragraph content"
+                   ""
+                   "Another Nested Title"
+                   "++++++++++++++++++++"
+                   "Another nested content"]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 2))})
+        (let [[first-section second-section] (:children root)]
+          first-section => (contains
+                            {:type :section
+                             :style "underline="
+                             :children #(-> % count (= 3))})
+          second-section => (contains
+                             {:type :section
+                              :style "underline="
+                              :children #(-> % count (= 3))})
+          (let [[first-header first-paragraph first-nested-section] (:children first-section)
+                [second-header second-paragraph second-nested-section] (:children second-section)]
+            first-header => (contains
+                             {:type :header
+                              :children (just
+                                         [(contains
+                                           {:type :text
+                                            :value "First Title"})])})
+            first-paragraph => (contains
+                                {:type :paragraph
+                                 :children (just
+                                            [(contains
+                                              {:type :text
+                                               :value "First paragraph content"})])})
+            first-nested-section => (contains
+                                     {:type :section
+                                      :style "overline-"
+                                      :children #(-> % count (= 3))})
+            second-header => (contains
+                              {:type :header
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Second Title"})])})
+            second-paragraph => (contains
+                                 {:type :paragraph
+                                  :children (just
+                                             [(contains
+                                               {:type :text
+                                                :value "Second paragraph content"})])})
+            second-nested-section => (contains
+                                      {:type :section
+                                       :style "underline+"
+                                       :children #(-> % count (= 2))})
+            (let [[header paragraph nested-section] (:children first-nested-section)]
+              header => (contains
+                         {:type :header
+                          :children (just
+                                     [(contains
+                                       {:type :text
+                                        :value "Nested Title"})])})
+              paragraph => (contains
+                            {:type :paragraph
+                             :children (just
+                                        [(contains
+                                          {:type :text
+                                           :value "Nested content"})])})
+              nested-section => (contains
+                                 {:type :section
+                                  :style "underline+"
+                                  :children (just
+                                             [(contains
+                                               {:type :header
+                                                :children (just
+                                                           [(contains
+                                                             {:type :text
+                                                              :value "Nested Nested Title"})])})])}))
+            (let [[header paragraph] (:children second-nested-section)]
+              header => (contains
+                         {:type :header
+                          :children (just
+                                     [(contains
+                                       {:type :text
+                                        :value "Another Nested Title"})])})
+              paragraph => (contains
+                            {:type :paragraph
+                             :children (just
+                                        [(contains
+                                          {:type :text
+                                           :value "Another nested content"})])}))))))
+
+(fact "Title underline is shorter than title text but longer than 3 characters"
+      (let [lines ["Section Title"
+                   "===="
+                   "Paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [section (-> root :children first)]
+          section => (contains {:type :section
+                                :style "underline="
+                                :children #(-> % count (= 3))})
+          (let [[header error paragraph] (:children section)]
+            header => (contains
+                       {:type :header
+                        :children (just
+                                   [(contains
+                                     {:type :text
+                                      :value "Section Title"})])})
+            error => (contains
+                      {:type :error
+                       :children (just
+                                  [(contains
+                                    {:type :paragraph
+                                     :children (just
+                                                [(contains
+                                                  {:type :text
+                                                   :value "Title underline too short."})])})
+                                   (contains
+                                    {:type :preserve
+                                     :value "Section Title\r\n===="})])})
+            paragraph => (contains
+                          {:type :paragraph
+                           :children (just
+                                      [(contains
+                                        {:type :text
+                                         :value "Paragraph content"})])})))))
+
+(fact "Title underline is shorter than title text but not longer than 3 characters"
+      (let [lines ["Section Title"
+                   "==="
+                   "Paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [paragraph (-> root :children first)]
+          paragraph => (contains {:type :paragraph
+                                  :children (just
+                                             [(contains
+                                               {:type :text
+                                                :value "Section Title === Paragraph content"})])}))))
+
+
+(fact "Title overline and overline are shorter than title text but not longer than 3 characters"
+      (let [lines ["==="
+                   "Section Title"
+                   "==="
+                   "Paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [section (-> root :children first)]
+          section => (contains {:type :section
+                                :style "overline="
+                                :children #(-> % count (= 3))})
+          (let [[header error paragraph] (:children section)]
+            header => (contains
+                       {:type :header
+                       :children (just
+                                  [(contains
+                                    {:type :text
+                                     :value "Section Title"})])})
+            error => (contains
+                      {:type :error
+                       :children (just
+                                  [(contains
+                                    {:type :paragraph
+                                     :children (just
+                                                [(contains
+                                                  {:type :text
+                                                   :value "Title overline too short."})])})
+                                   (contains {:type :preserve
+                                              :value "===\r\nSection Title\r\n==="})])})
+            paragraph => (contains
+                          {:type :paragraph
+                           :children (just
+                                      [(contains
+                                        {:type :text
+                                         :value "Paragraph content"})])})))))

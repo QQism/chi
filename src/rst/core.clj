@@ -265,16 +265,9 @@
 
 (defn append-text [doc block-text]
   (let [paragraph (create-paragraph block-text)]
-    (do
-      ;;(println "[Current Loc]")
-      ;;(pprint doc)
-      ;;(println (str "[Path IID] "(get-iid-path doc)))
-      ;;(println "\n")
-      ;;(println (str "[Paragraph] " block-text))
-      ;;(pprint paragraph)
-      (-> doc
-          ;;z/up
-          (z/append-child paragraph)))))
+    (-> doc
+        ;;z/up
+        (z/append-child paragraph))))
 
 (def body->text
   {:name :text,
@@ -618,8 +611,7 @@
 (read-indented-lines content-lines {:current-idx 2 :remains ["First Item"]} 2)
 
 (defn zip-doc [doc]
-  (z/zipper ;;#(not= (:type %) :text)
-            map?
+  (z/zipper map? ;;#(not= (:type %) :text)
             #(-> % :children seq)
             (fn [node children]
               (assoc node :children (vec children)))

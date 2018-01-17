@@ -218,7 +218,7 @@
   (let [{idx :current-idx text-lines :remains} context
         [overline text] text-lines
         underline-line (nth lines idx)
-        new-text-lines (conj text-lines text)
+        new-text-lines (conj text-lines underline-line)
         section-style "overline"
         new-section (create-section text overline section-style)]
     (-> doc (append-section-in-matched-location new-section)

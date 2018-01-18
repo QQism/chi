@@ -9,7 +9,9 @@
   (next-line [_])
   (forward [_])
   (eof? [_])
+  (not-eof? [_])
   (eof-on-next? [_])
+  (not-eof-on-next? [_])
   (push-state [_ state])
   (pop-state [_])
   (current-state [_])
@@ -24,7 +26,9 @@
   (next-line [_] (nth lines (inc current-idx)))
   (forward [_] (update _ :current-idx inc))
   (eof? [_] (>= current-idx (count lines)))
+  (not-eof? [_] (not (eof? _)))
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
+  (not-eof-on-next? [_] (not (eof-on-next? _)))
   (push-state [_ state] (update _ :states conj state))
   (pop-state [_] (update _ :states pop))
   (current-state [_] (-> _ :states peek))
@@ -279,20 +283,20 @@
    :parse (fn [doc context lines]
             (let [{current-idx :current-idx remains :remains} context
                   lines-count (count lines)]
-              (if (< current-idx lines-count)
-                (let [line (nth lines current-idx)
-                      text-lines (conj remains line)]
-                  (if (< (inc current-idx) lines-count)
+              (if (not-eof? context)
+                (let [line (current-line context)]
+                  (if (not-eof-on-next? context)
                     [doc
                      (-> context
-                         (add-line-to-remains line)
                          forward
+                         (add-line-to-remains line)
                          (push-state :text))]
                     ;; next line if EOF
-                    [(append-text doc (string/join " " text-lines))
-                     (-> context
-                         clear-remains
-                         forward)])))))})
+                    (let [text-lines (-> context :remains (conj line))]
+                      [(append-text doc (string/join " " text-lines))
+                       (-> context
+                           clear-remains
+                           forward)]))))))})
 
 (def line->blank {:name :blank
                   :state :line
@@ -632,7 +636,7 @@
         init-doc (zip-doc {:type :root, :iid 1, :children []})]
    (loop [doc init-doc
           context init-context]
-     (if (not (eof? context))
+     (if (not-eof? context)
        (let [line (current-line context)
              current-state (current-state context)
              transition (next-transition current-state line)

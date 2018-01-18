@@ -442,11 +442,11 @@
 (def text->line {:name :line,
                  :state :text,
                  :parse (fn [doc context lines]
-                          (let [{:keys [remains, current-idx]} context
-                                text (first remains)
-                                line (nth lines current-idx)
+                          (let [prev-text-line (-> context :remains peek)
+                                line (current-line context)
                                 line-count (count line)
-                                ]
+                                short-line? (< line-count 4)
+                                shorter-than-prev? (< line-count (count prev-text-line))]
                             ;; There are two possible cases:
                             ;; - line is shorter than the text (in remains)
                             ;;   - if line is shorter than 4 characters
@@ -455,14 +455,8 @@
                             ;;     | create the section + title + warning
                             ;; - line is equal or longer than the text (in remains)
                             ;;   | create section + title
-                            (if (< line-count (count text))
-                              (if (< line-count 4)
-                                (-> text->text :parse (apply [doc context lines]))
-                                [(append-section-text->line doc context lines)
-                                 (-> context
-                                     forward
-                                     clear-remains
-                                     pop-state)])
+                            (if (and short-line? shorter-than-prev?)
+                              (-> text->text :parse (apply [doc context lines]))
                               [(append-section-text->line doc context lines)
                                (-> context
                                    forward

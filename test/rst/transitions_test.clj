@@ -2,7 +2,7 @@
   (:require  [midje.sweet :refer :all]
              [rst.core :refer :all]))
 
-(fact "Transition between paragraphs"
+(fact "Line is longer than 4 char => Transition between paragraphs"
       (let [lines ["Lorem Ipsum is simply dummy text of"
                    "the printing and typesetting industry."
                    ""
@@ -26,7 +26,36 @@
                                              {:type :text
                                               :value "Lorem Ipsum has been the industry's standard..."})])}))))
 
-(fact "Error when document ends with a transition"
+(fact "Line is not longer than 4 char => Not Transition"
+      (let [lines ["Lorem Ipsum is simply dummy text of"
+                   "the printing and typesetting industry."
+                   ""
+                   "==="
+                   ""
+                   "Lorem Ipsum has been the industry's standard..."]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 3))})
+        (let [[first-paragraph second-paragraph third-paragraph] (:children root)]
+          first-paragraph => (contains
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Lorem Ipsum is simply dummy text of the printing and typesetting industry."})])})
+          second-paragraph => (contains
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "==="})])})
+          third-paragraph => (contains
+                               {:type :paragraph
+                                :children (just
+                                           [(contains
+                                             {:type :text
+                                              :value "Lorem Ipsum has been the industry's standard..."})])}))))
+
+(fact "Document ends with a transition and line is longer than 4 char => Error"
       (let [lines ["Lorem Ipsum is simply dummy text of"
                    "the printing and typesetting industry."
                    ""
@@ -51,3 +80,25 @@
                                               [(contains
                                                 {:type :text
                                                  :value "Document may not end with a transition."})])})])}))))
+
+(fact "Document ends with a transition and line is not longer than 4 char => paragraph"
+      (let [lines ["Lorem Ipsum is simply dummy text of"
+                   "the printing and typesetting industry."
+                   ""
+                   "==="
+                   ""]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 2))})
+        (let [[first-paragraph second-paragraph] (:children root)]
+          first-paragraph => (contains
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Lorem Ipsum is simply dummy text of the printing and typesetting industry."})])})
+          second-paragraph => (contains
+                               {:type :paragraph
+                                :children (just
+                                           [(contains
+                                             {:type :text
+                                              :value "==="})])}))))

@@ -304,22 +304,29 @@
                            ;; Check if it is the last line of the document
                            ;; - Y: Raise error
                            ;; - N: Create a transition
-                           (loop [current-context context]
-                             (let [{idx :current-idx} current-context]
-                               (if (< idx (count lines))
-                                 (let [line (nth lines idx)]
-                                   (if (match-transition :blank line)
-                                     (recur (-> current-context forward))
-                                     [(append-transition-line->blank doc)
-                                      (-> current-context
-                                          clear-remains
-                                          pop-state)]))
-                                 [(-> doc
-                                      (append-transition-line->blank)
-                                      (append-error-doc-end-with-transition))
-                                  (-> current-context
-                                      clear-remains
-                                      pop-state)]))))})
+                           (let [prev-line (-> context :remains peek)
+                                 prev-short-line? (< (count prev-line) 4)]
+                             (if prev-short-line?
+                               [(append-text doc prev-line)
+                                (-> context
+                                    forward
+                                    clear-remains
+                                    pop-state)]
+                               (loop [current-context context]
+                                (if (not-eof? current-context)
+                                  (let [line (current-line current-context)]
+                                    (if (match-transition :blank line)
+                                      (recur (-> current-context forward))
+                                      [(append-transition-line->blank doc)
+                                       (-> current-context
+                                           clear-remains
+                                           pop-state)]))
+                                  [(-> doc
+                                       (append-transition-line->blank)
+                                       (append-error-doc-end-with-transition))
+                                   (-> current-context
+                                       clear-remains
+                                       pop-state)])))))})
 
 (def line->text {:name :text,
                  :state :line

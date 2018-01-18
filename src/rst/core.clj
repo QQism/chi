@@ -461,56 +461,6 @@
                                    clear-remains
                                    pop-state)])))})
 
-
-(def doc-sample
-  {:type :root
-   :iid 0
-   :children [{:type :section
-               :iid 1
-               :style "underline="
-               :children [{:type :header
-                           :iid 2
-                           :children [{:type :text
-                                       :iid 3
-                                       :value "The 1st Header"}]}
-                          {:type :section
-                           :iid 4
-                           :style "underline+"
-                           :children [{:type :header
-                                       :iid 5
-                                       :children [{:type :text
-                                                   :iid 6
-                                                   :value "Sub 1st Header"}]}]}
-                          {:type :section
-                           :iid 7
-                           :style "underline+"
-                           :children [{:type :header
-                                       :iid 8
-                                       :children [{:type :text
-                                                   :iid 9
-                                                   :value "Sub 2nd Header"}]}
-                                      ;;{:type :section
-                                      ;; :iid 10
-                                      ;; :style "underline/"
-                                      ;; :children [{:type :header
-                                      ;;             :iid 11
-                                      ;;             :children [{:type :text
-                                      ;;                         :iid 12
-                                      ;;                         :value "Sub Sub Header"}]}]}
-                                      ]}]}]})
-
-
-
-;; Each state has a list of possible transitions
-;; depend on what type of transition on each state, the parser may decide to do the following tasks
-;; - Parse the line
-;; - Decide the next state
-;; - Update the document tree
-;;
-;;
-;;
-;;
-
 (def body->indent {:name :indent,
                    :state :body,
                    :parse (fn [doc context])})

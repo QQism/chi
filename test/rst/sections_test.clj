@@ -249,6 +249,29 @@
                                                {:type :text
                                                 :value "Section Title === Paragraph content"})])}))))
 
+(fact "Title underline is not longer than title text but not longer than 3 characters"
+      (let [lines ["Hea"
+                   "==="
+                   "Paragraph content"]
+            root (process-document lines)]
+        root  => (contains {:type :root :children #(-> % count (= 1))})
+        (let [section (-> root :children first)]
+          section => (contains {:type :section
+                                :style "underline="
+                                :children #(-> % count (= 2))})
+          (let [[header paragraph] (:children section)]
+            header => (contains
+                       {:type :header
+                        :children (just
+                                   [(contains
+                                     {:type :text
+                                      :value "Hea"})])})
+            paragraph => (contains
+                          {:type :paragraph
+                           :children (just
+                                      [(contains
+                                        {:type :text
+                                         :value "Paragraph content"})])})))))
 
 (fact "Title overline and overline are shorter than title text but not longer than 3 characters"
       (let [lines ["==="

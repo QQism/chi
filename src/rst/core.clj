@@ -86,6 +86,9 @@
    :line      {:pattern (:line patterns)}
    :text      {:pattern (:text patterns)}})
 
+(defn parse [doc context transition]
+  (-> transition :parse (apply [doc context (:lines context)])))
+
 (defn match-transition [transition-name line]
   (-> (transition-name transition-patterns)
       :pattern
@@ -449,14 +452,12 @@
                                 shorter-than-prev? (< line-count (count prev-text-line))]
                             ;; There are two possible cases:
                             ;; - line is shorter than the text (in remains)
-                            ;;   - if line is shorter than 4 characters
+                            ;;     AND line is shorter than 4 characters
                             ;;     | switch to transition text->text
                             ;;   - else
-                            ;;     | create the section + title + warning
-                            ;; - line is equal or longer than the text (in remains)
-                            ;;   | create section + title
+                            ;;     | create the section
                             (if (and short-line? shorter-than-prev?)
-                              (-> text->text :parse (apply [doc context lines]))
+                              (parse doc context text->text)
                               [(append-section-text->line doc context lines)
                                (-> context
                                    forward
@@ -580,9 +581,6 @@
 ;;(-> states
 ;;    :text
 ;;    :transitions (find-matched-transition :text))
-
-(defn parse [doc context transition]
-  (-> transition :parse (apply [doc context (:lines context)])))
 
 (def content-lines (-> (io/resource "simple-sections.rst")
                slurp

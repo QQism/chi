@@ -224,10 +224,10 @@
     (append-error-section-title-too-short doc style text-lines)
     doc))
 
-(defn append-section-line->text-line [doc context lines]
-  (let [{idx :current-idx text-lines :remains} context
+(defn append-section-line->text-line [doc context]
+  (let [{text-lines :remains} context
         [overline text] text-lines
-        underline-line (nth lines idx)
+        underline-line (current-line context)
         new-text-lines (conj text-lines underline-line)
         section-style "overline"
         new-section (create-section text overline section-style)]
@@ -304,10 +304,10 @@
                            ;; Check if it is the last line of the document
                            ;; - Y: Raise error
                            ;; - N: Create a transition
-                           (let [prev-line (-> context :remains peek)
-                                 prev-short-line? (< (count prev-line) 4)]
+                           (let [prev-text-line (-> context :remains peek)
+                                 prev-short-line? (< (count prev-text-line) 4)]
                              (if prev-short-line?
-                               [(append-text doc prev-line)
+                               [(append-text doc prev-text-line)
                                 (-> context
                                     forward
                                     clear-remains
@@ -342,20 +342,19 @@
                           ;;   - Y: Switch to the text state
                           ;;   - N: Create an error
                           (let [{idx :current-idx, text-lines :remains} context
-                                current-text-line (nth lines idx)
+                                current-text-line (current-line context)
                                 current-text-lines (conj text-lines current-text-line)
-                                next-idx (inc idx)
                                 prev-text-line (peek text-lines)
                                 prev-short-line? (< (count prev-text-line) 4)]
-                            (if (< next-idx (count lines))
-                              (let [next-text-line (nth lines next-idx)
+                            (if (not-eof-on-next? context)
+                              (let [next-text-line (next-line context)
                                     next-text-lines (conj current-text-lines next-text-line)
                                     next-context (-> context
                                                      forward
                                                      (update-remains current-text-lines))]
                                 (if (match-transition :line next-text-line)
                                   (if (= prev-text-line next-text-line)
-                                    [(append-section-line->text-line doc next-context lines)
+                                    [(append-section-line->text-line doc next-context)
                                      (-> next-context
                                          forward
                                          clear-remains
@@ -420,20 +419,20 @@
                           ;; Read the whole block of text until the blank line
                           ;; keep track the index
                           (loop [current-context context]
-                            (let [{idx :current-idx text-lines :remains} current-context
-                                  block-text (string/join " " text-lines)]
-                              (if (< idx (count lines))
-                                (let [line (nth lines idx)]
-                                  (if (not (match-transition :blank line))
-                                    (recur (-> current-context
-                                               forward
-                                               (add-line-to-remains line)))
-                                    ;; blank line, create paragraph & return
+                            (if (not-eof? current-context)
+                              (let [line (current-line current-context)]
+                                (if (not (match-transition :blank line))
+                                  (recur (-> current-context
+                                             forward
+                                             (add-line-to-remains line)))
+                                  ;; blank line, create paragraph & return
+                                  (let [block-text (string/join " " (:remains current-context))]
                                     [(append-text doc block-text)
                                      (-> current-context
                                          clear-remains
-                                         pop-state)]))
-                                ;; EOF, create paragraph & return
+                                         pop-state)])))
+                              ;; EOF, create paragraph & return
+                              (let [block-text (string/join " " (:remains current-context))]
                                 [(append-text doc block-text)
                                  (-> current-context
                                      forward

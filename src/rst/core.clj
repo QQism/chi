@@ -238,10 +238,10 @@
         (append-applicable-error-section-title-too-short section-style
                                                          new-text-lines))))
 
-(defn append-section-text->line [doc context lines]
-  (let [{idx :current-idx text-lines :remains} context
+(defn append-section-text->line [doc context]
+  (let [{text-lines :remains} context
         text (peek text-lines)
-        underline (nth lines idx)
+        underline (current-line context)
         new-text-lines (conj text-lines underline)
         section-style "underline"
         new-section (create-section text underline section-style)]
@@ -267,8 +267,7 @@
                  :state :body,
                  :parse (fn [doc context lines]
                           (let [next-state :line
-                                idx (:current-idx context)
-                                line (nth lines idx)]
+                                line (current-line context)]
                             [doc (-> context
                                      forward
                                      (add-line-to-remains line)
@@ -284,22 +283,20 @@
   {:name :text,
    :state :body,
    :parse (fn [doc context lines]
-            (let [{current-idx :current-idx remains :remains} context
-                  lines-count (count lines)]
-              (if (not-eof? context)
-                (let [line (current-line context)]
-                  (if (not-eof-on-next? context)
-                    [doc
+            (if (not-eof? context)
+              (let [line (current-line context)]
+                (if (not-eof-on-next? context)
+                  [doc
+                   (-> context
+                       forward
+                       (add-line-to-remains line)
+                       (push-state :text))]
+                  ;; next line if EOF
+                  (let [text-lines (-> context :remains (conj line))]
+                    [(append-text doc (string/join " " text-lines))
                      (-> context
-                         forward
-                         (add-line-to-remains line)
-                         (push-state :text))]
-                    ;; next line if EOF
-                    (let [text-lines (-> context :remains (conj line))]
-                      [(append-text doc (string/join " " text-lines))
-                       (-> context
-                           clear-remains
-                           forward)]))))))})
+                         clear-remains
+                         forward)])))))})
 
 (def line->blank {:name :blank
                   :state :line
@@ -458,7 +455,7 @@
                             ;;     | create the section
                             (if (and short-line? shorter-than-prev?)
                               (parse doc context text->text)
-                              [(append-section-text->line doc context lines)
+                              [(append-section-text->line doc context)
                                (-> context
                                    forward
                                    clear-remains

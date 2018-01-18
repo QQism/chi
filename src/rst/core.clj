@@ -87,7 +87,7 @@
    :text      {:pattern (:text patterns)}})
 
 (defn parse [doc context transition]
-  (-> transition :parse (apply [doc context (:lines context)])))
+  (-> transition :parse (apply [doc context])))
 
 (defn match-transition [transition-name line]
   (-> (transition-name transition-patterns)
@@ -260,12 +260,12 @@
 
 (def body->blank {:name :blank,
                   :state :body,
-                  :parse (fn [doc context lines]
+                  :parse (fn [doc context]
                            [doc (-> context forward)])})
 
 (def body->line {:name :line,
                  :state :body,
-                 :parse (fn [doc context lines]
+                 :parse (fn [doc context]
                           (let [next-state :line
                                 line (current-line context)]
                             [doc (-> context
@@ -282,7 +282,7 @@
 (def body->text
   {:name :text,
    :state :body,
-   :parse (fn [doc context lines]
+   :parse (fn [doc context]
             (if (not-eof? context)
               (let [line (current-line context)]
                 (if (not-eof-on-next? context)
@@ -300,7 +300,7 @@
 
 (def line->blank {:name :blank
                   :state :line
-                  :parse (fn [doc context lines]
+                  :parse (fn [doc context]
                            ;; Check if it is the last line of the document
                            ;; - Y: Raise error
                            ;; - N: Create a transition
@@ -330,7 +330,7 @@
 
 (def line->text {:name :text,
                  :state :line
-                 :parse (fn [doc context lines]
+                 :parse (fn [doc context]
                           ;; Read the next line
                           ;; If it is a lines
                           ;; - Y: Check if overline and underline are matched
@@ -398,13 +398,13 @@
 
 (def line->line {:name :line,
                  :state :line
-                 :parse (fn [doc context lines]
+                 :parse (fn [doc context]
                           ;; Append the error message
                           )})
 
 (def text->blank {:name :blank,
                   :state :text,
-                  :parse (fn [doc context lines]
+                  :parse (fn [doc context]
                            (let [text-lines (:remains context)
                                  block-text (string/join " " text-lines)]
                              [(append-text doc block-text)
@@ -415,7 +415,7 @@
 
 (def text->text {:name :text,
                  :state :text,
-                 :parse (fn [doc context lines]
+                 :parse (fn [doc context]
                           ;; Read the whole block of text until the blank line
                           ;; keep track the index
                           (loop [current-context context]
@@ -441,7 +441,7 @@
 
 (def text->line {:name :line,
                  :state :text,
-                 :parse (fn [doc context lines]
+                 :parse (fn [doc context]
                           (let [prev-text-line (-> context :remains peek)
                                 line (current-line context)
                                 line-count (count line)
@@ -513,24 +513,24 @@
 
 (def body->indent {:name :indent,
                    :state :body,
-                   :parse (fn [doc context lines])})
+                   :parse (fn [doc context])})
 
 (def body->bullet {:name :bullet,
                    :state :body,
-                   :parse (fn [doc context lines]
+                   :parse (fn [doc context]
                             )})
 
 (def body->enum {:name :enum,
                  :state :body,
-                 :parse (fn [doc context lines])})
+                 :parse (fn [doc context])})
 
 (def body->field-marker {:name :enum,
                          :state :body,
-                         :parse (fn [doc context lines])})
+                         :parse (fn [doc context])})
 
 (def body->option-marker {:name :enum,
                          :state :body,
-                         :parse (fn [doc context lines])})
+                         :parse (fn [doc context])})
 
 (def states
   {:body           {:transitions [body->blank

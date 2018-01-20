@@ -96,6 +96,8 @@
    :text    #".+"})
 
 (re-matches (:indent patterns) " This Hello")
+(re-matches (:line patterns) "***")
+(re-matches (:bullet patterns) "* Item")
 
 (let [[_ style spacing text] (re-matches (:bullet patterns) "*  hello - this")
       indent (inc (count spacing))]
@@ -111,8 +113,8 @@
    :line      {:pattern (:line patterns)}
    :text      {:pattern (:text patterns)}})
 
-(defn parse [context transition]
-  (-> transition :parse (apply [context])))
+(defn parse [context transition match]
+  (-> transition :parse (apply [context match])))
 
 (defn match-transition [transition-name line]
   (-> (transition-name transition-patterns)
@@ -286,12 +288,12 @@
 
 (def body->blank {:name :blank,
                   :state :body,
-                  :parse (fn [context]
+                  :parse (fn [context _]
                            (-> context forward))})
 
 (def body->line {:name :line,
                  :state :body,
-                 :parse (fn [context]
+                 :parse (fn [context _]
                           (let [line (current-line context)]
                             (-> context
                                 forward
@@ -307,7 +309,7 @@
 (def body->text
   {:name :text,
    :state :body,
-   :parse (fn [context]
+   :parse (fn [context _]
             (if (not-eof? context)
               (let [line (current-line context)]
                 (if (not-eof-on-next? context)
@@ -324,7 +326,7 @@
 
 (def line->blank {:name :blank
                   :state :line
-                  :parse (fn [context]
+                  :parse (fn [context _]
                            ;; Check if it is the last line of the document
                            ;; - Y: Raise error
                            ;; - N: Create a transition
@@ -353,7 +355,7 @@
 
 (def line->text {:name :text,
                  :state :line
-                 :parse (fn [context]
+                 :parse (fn [context _]
                           ;; Read the next line
                           ;; If it is a lines
                           ;; - Y: Check if overline and underline are matched
@@ -422,13 +424,13 @@
 
 (def line->line {:name :line,
                  :state :line
-                 :parse (fn [context]
+                 :parse (fn [context _]
                           ;; Append the error message
                           )})
 
 (def text->blank {:name :blank,
                   :state :text,
-                  :parse (fn [ context]
+                  :parse (fn [context _]
                            (let [text-lines (:remains context)
                                  block-text (string/join " " text-lines)]
                              (-> context
@@ -439,7 +441,7 @@
 
 (def text->text {:name :text,
                  :state :text,
-                 :parse (fn [context]
+                 :parse (fn [context _]
                           ;; Read the whole block of text until the blank line
                           ;; keep track the index
                           (loop [current-context context]
@@ -465,7 +467,7 @@
 
 (def text->line {:name :line,
                  :state :text,
-                 :parse (fn [context]
+                 :parse (fn [context match]
                           (let [prev-text-line (-> context :remains peek)
                                 line (current-line context)
                                 line-count (count line)
@@ -478,7 +480,7 @@
                             ;;   - else
                             ;;     | create the section
                             (if (and short-line? shorter-than-prev?)
-                              (parse context text->text)
+                              (parse context text->text match)
                               (-> context
                                   (update-doc append-section-text->line [prev-text-line line])
                                   forward
@@ -487,27 +489,27 @@
 
 (def body->indent {:name :indent,
                    :state :body,
-                   :parse (fn [context])})
+                   :parse (fn [context match])})
 
 ;;TODO: need to figure out the way to handle bullet-list state and indent
 (def body->bullet {:name :bullet,
                    :state :body,
-                   :parse (fn [context]
+                   :parse (fn [context match]
                             (-> context
                                 (push-state :bullet-list))
                             )})
 
 (def body->enum {:name :enum,
                  :state :body,
-                 :parse (fn [doc context])})
+                 :parse (fn [context match])})
 
 (def body->field-marker {:name :enum,
                          :state :body,
-                         :parse (fn [doc context])})
+                         :parse (fn [context match])})
 
 (def body->option-marker {:name :enum,
                          :state :body,
-                         :parse (fn [doc context])})
+                         :parse (fn [context match])})
 
 (def states
   {:body           {:transitions [body->blank
@@ -607,7 +609,7 @@
   (if (remains? context)
     (let [current-state (current-state context)
           [transition match] (next-transition current-state "")]
-      (parse context transition))
+      (parse context transition match))
     context))
 
 (defn process-document [document-lines]
@@ -619,7 +621,7 @@
        (let [line (current-line context)
              current-state (current-state context)
              [transition match] (next-transition current-state line)
-             new-context (parse context transition)]
+             new-context (parse context transition match)]
          (do
            ;;(println new-doc)
            ;;(println "PATH")

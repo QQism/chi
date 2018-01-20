@@ -4,6 +4,8 @@
              [clojure.pprint :refer [pprint]]
              [clojure.zip :as z]))
 
+(declare process-lines)
+
 (def error-levels {:debug    0
                    :info     1
                    :warning  2
@@ -298,11 +300,19 @@
   (let [transition (create-transition)]
     (append-transition doc transition)))
 
+(defn append-applicable-error-blockquote-no-end-blank-line [doc lines]
+  (if (not (match-transition? :blank (peek lines)))
+    (let [error (create-error "Block quote ends without a blank line; unexpected unindent." :warning)]
+      (append-error doc error))
+    doc))
+
 (defn append-blockquote-body->indent [doc lines lines-indent current-indent]
   (let [raw-indent (+ lines-indent current-indent)
         blockquote (create-blockquote raw-indent)
         processed-blockquote (process-lines lines blockquote :body lines-indent)]
-    (append-node doc processed-blockquote)))
+    (-> doc
+        (append-node processed-blockquote)
+        (append-applicable-error-blockquote-no-end-blank-line lines))))
 
 (def body->blank {:name :blank,
                   :state :body,
@@ -512,15 +522,13 @@
         (let [line (current-line current-context)]
           (if-let [match (re-matches indented-pattern line)]
             (recur (conj indented-lines (nth match 1)) (forward current-context))
-            (if (match-transition :blank line)
+            (if (match-transition? :blank line)
               (recur (conj indented-lines "") (forward current-context))
               [indented-lines
                (-> current-context
-                   forward
                    clear-remains)])))
         [indented-lines
          (-> current-context
-             forward
              clear-remains)]))))
 
 (def body->indent {:name :indent,
@@ -552,8 +560,8 @@
                          :parse (fn [context match])})
 
 (def body->option-marker {:name :enum,
-                         :state :body,
-                         :parse (fn [context match])})
+                          :state :body,
+                          :parse (fn [context match])})
 
 (def states
   {:body           {:transitions [body->blank
@@ -607,12 +615,12 @@
 ;;    :transitions (find-matched-transition :text))
 
 (def content-lines (-> (io/resource "blockquotes.rst")
-               slurp
-               (string/split #"\r|\n")
-               ;; Remove right whitespaces
-               (->> (map string/trimr))
-               ;; Become a vector, giving the random access with 0(1) complexity
-               vec))
+                       slurp
+                       (string/split #"\r|\n")
+                       ;; Remove right whitespaces
+                       (->> (map string/trimr))
+                       ;; Become a vector, giving the random access with 0(1) complexity
+                       vec))
 
 (re-matches #" {1}(.*)" " - Hello")
 

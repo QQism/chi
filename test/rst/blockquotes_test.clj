@@ -2,7 +2,7 @@
   (:require  [midje.sweet :refer :all]
              [rst.core :refer :all]))
 
-(fact "Parse a simple blockquotes"
+(fact "A simple blockquotes ends with a blank line"
       (let [lines ["Lorem Ipsum is simply dummy text"
                    ""
                    "  Lorem Ipsum is simply dummy"
@@ -37,3 +37,33 @@
                                           [(contains
                                             {:type :text
                                              :value "Lorem Ipsum has been the industry's standard"})])})))))
+
+(fact "A simple blockquotes ends without a blank line"
+      (let [lines ["  Lorem Ipsum is simply dummy"
+                   "  's standard dummy text ever"
+                   ""
+                   "  Lorem Ipsum has been the industry's standard"
+                   "Lorem Ipsum is simply dummy text"]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 3))})
+        (let [[blockquote error paragraph] (:children root)]
+          blockquote => (contains
+                         {:type :blockquotes
+                          :indent 2
+                          :children #(-> % count (= 2))})
+          error => (contains
+                    {:type :error
+                     :level 2
+                     :children (just
+                                [(contains
+                                  {:type :paragraph
+                                   :children (just
+                                              [(contains
+                                                {:type :text
+                                                 :value "Block quote ends without a blank line; unexpected unindent."})])})])})
+          paragraph => (contains
+                        {:type :paragraph
+                         :children (just
+                                    [(contains
+                                      {:type :text
+                                       :value "Lorem Ipsum is simply dummy text"})])}))))

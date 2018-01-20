@@ -5,12 +5,12 @@ A Clojure library designed to ... well, that part is up to you.
 ## Usage
 
 Document Structure
-- Document
-- Section
-  + Title
-- Transition
+- Document `Checked`
+- Section `Checked`
+  + Title `Checked`
+- Transition `Checked`
 Document Body
-- Paragraph
+- Paragraph `Checked`
 - Inline markup
   + Emphasis
   + Strong emphasis
@@ -25,7 +25,7 @@ Document Body
   + Inline internal target
 - Block
   + Literal block
-  + Block quotes
+  + Block quotes `On-going`
   + Doctest block
 - Lists
   + Bullet

@@ -47,12 +47,12 @@
   (clear-remains [_] (update-remains _ []))
   (remains? [_] (-> _ :remains empty? not)))
 
-(defn make-context [doc lines indent]
+(defn make-context [lines doc init-state indent]
   (map->DocumentContext {:doc doc
                          :lines lines
                          :indent indent
                          :current-idx 0
-                         :states [:body]
+                         :states [init-state]
                          :remains []
                          :reported-level (:info error-levels)}))
 
@@ -173,19 +173,29 @@
     :iid (get-iid)
     :children [(create-paragraph description)]}))
 
-(defn append-error [node-loc error]
-  (-> node-loc (z/append-child error)))
+(defn create-blockquote []
+  {:type :blockquotes
+   :iid (get-iid)
+   :children []})
 
-(defn append-section [node-loc section]
+(defn append-node [doc node]
+  (-> doc (z/append-child node)))
+
+(defn append-error [doc error]
+  (append-node doc error))
+
+(defn move-to-latest-child [doc]
+  (-> doc z/down z/rightmost))
+
+(defn append-section [doc section]
   ;; Append the section as the new child of the current node location
   ;; Move the location to the position of the new child
-  (-> node-loc
-      (z/append-child section)
-      z/down
-      z/rightmost))
+  (-> doc
+      (append-node section)
+      move-to-latest-child))
 
-(defn append-transition [node-loc transition]
-  (-> node-loc (z/append-child transition)))
+(defn append-transition [doc transition]
+  (append-node doc transition))
 
 (defn find-loc-with-iid [doc-loc child-iid]
   (if (-> doc-loc z/node :iid (= child-iid))
@@ -287,6 +297,11 @@
   (let [transition (create-transition)]
     (append-transition doc transition)))
 
+(defn append-blockquote-body->indent [doc indent]
+  (let [blockquote-node (create-blockquote)
+        ]
+    (append-node doc blockquote-node)))
+
 (def body->blank {:name :blank,
                   :state :body,
                   :parse (fn [context _]
@@ -303,9 +318,7 @@
 
 (defn append-text [doc block-text]
   (let [paragraph (create-paragraph block-text)]
-    (-> doc
-        ;;z/up
-        (z/append-child paragraph))))
+    (append-node doc paragraph)))
 
 (def body->text
   {:name :text,
@@ -620,9 +633,9 @@
       (parse context transition match))
     context))
 
-(defn process-lines [lines doc-node indent]
+(defn process-lines [lines doc-node init-state indent]
   (let [init-doc (zip-doc doc-node)
-        init-context (make-context init-doc lines indent)]
+        init-context (make-context lines init-doc init-state indent)]
     (loop [context init-context]
       (if (not-eof? context)
         (let [line (current-line context)
@@ -636,7 +649,8 @@
 
 (defn process-document [document-lines]
   (let [root-node {:type :root :iid (get-iid) :children []}
-        no-indent 0]
-    (process-lines document-lines root-node no-indent)))
+        no-indent 0
+        init-state :body]
+    (process-lines document-lines root-node init-state no-indent)))
 
 (process-document content-lines)

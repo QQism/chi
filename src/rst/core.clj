@@ -300,8 +300,9 @@
 
 (defn append-blockquote-body->indent [doc lines lines-indent current-indent]
   (let [raw-indent (+ lines-indent current-indent)
-        blockquote-node (create-blockquote raw-indent)]
-    (append-node doc blockquote-node)))
+        blockquote (create-blockquote raw-indent)
+        processed-blockquote (process-lines lines blockquote :body lines-indent)]
+    (append-node doc processed-blockquote)))
 
 (def body->blank {:name :blank,
                   :state :body,
@@ -512,7 +513,7 @@
           (if-let [match (re-matches indented-pattern line)]
             (recur (conj indented-lines (nth match 1)) (forward current-context))
             (if (match-transition :blank line)
-              (recur indented-lines (forward current-context))
+              (recur (conj indented-lines "") (forward current-context))
               [indented-lines
                (-> current-context
                    forward
@@ -569,11 +570,6 @@
                                   ;;body->anonymous
                                   body->line
                                   body->text]}
-   :line           {:transitions [line->blank line->text line->line]}
-   :text           {:transitions [text->blank
-                                  ;;text->indent
-                                  text->line
-                                  text->text]}
    :bullet-list    {:transitions [body->blank
                                   ;;bullet->indent
                                   ;;bullet->bullet
@@ -587,7 +583,12 @@
                                   ;;bullet->explicit-markup
                                   ;;bullet->anonymous
                                   body->line
-                                  body->text]}})
+                                  body->text]}
+   :line           {:transitions [line->blank line->text line->line]}
+   :text           {:transitions [text->blank
+                                  ;;text->indent
+                                  text->line
+                                  text->text]}})
 
 (defn next-transition [state line]
   (some #(if-let [match (match-transition (:name %) line)]

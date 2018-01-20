@@ -67,3 +67,49 @@
                                     [(contains
                                       {:type :text
                                        :value "Lorem Ipsum is simply dummy text"})])}))))
+
+(fact "A simple blockquotes ends with a blank line"
+      (let [lines ["Lorem Ipsum is"
+                   "simply dummy text"
+                   "  Lorem Ipsum is simply dummy"
+                   "  's standard dummy text ever"
+                   ""
+                   "  Lorem Ipsum has been the industry's standard"
+                   ""
+                   ""]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 3))})
+        (let [[paragraph error blockquote] (:children root)]
+          paragraph => (contains {:type :paragraph
+                                  :children (just
+                                             [(contains
+                                               {:type :text
+                                                :value "Lorem Ipsum is simply dummy text"})])})
+          error => (contains
+                    {:type :error
+                     :level 3
+                     :children (just
+                                [(contains
+                                  {:type :paragraph
+                                   :children (just
+                                              [(contains
+                                                {:type :text
+                                                 :value "Unexpected indentation."})])})])})
+          blockquote => (contains
+                         {:type :blockquotes
+                          :indent 2
+                          :children #(-> % count (= 2))})
+          (let [[paragraph-1st paragraph-2nd] (:children blockquote)]
+            paragraph-1st => (contains
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Lorem Ipsum is simply dummy 's standard dummy text ever"})])})
+            paragraph-2nd => (contains
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Lorem Ipsum has been the industry's standard"})])}))
+          )))

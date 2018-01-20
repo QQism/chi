@@ -306,6 +306,10 @@
       (append-error doc error))
     doc))
 
+(defn append-error-unexpected-indentation [doc]
+  (let [error (create-error "Unexpected indentation." :error)]
+    (append-error doc error)))
+
 (defn append-blockquote-body->indent [doc lines lines-indent current-indent]
   (let [raw-indent (+ lines-indent current-indent)
         blockquote (create-blockquote raw-indent)
@@ -473,16 +477,24 @@
                           (loop [current-context context]
                             (if (not-eof? current-context)
                               (let [line (current-line current-context)]
-                                (if (not (match-transition? :blank line))
-                                  (recur (-> current-context
-                                             forward
-                                             (add-line-to-remains line)))
-                                  ;; blank line, create paragraph & return
-                                  (let [block-text (string/join " " (:remains current-context))]
-                                    (-> current-context
-                                        (update-doc append-text block-text)
-                                        clear-remains
-                                        pop-state))))
+                                (cond (match-transition? :blank line)
+                                      ;; blank line, create paragraph & return
+                                      (let [block-text (string/join " " (:remains current-context))]
+                                        (-> current-context
+                                            (update-doc append-text block-text)
+                                            clear-remains
+                                            pop-state))
+                                      (match-transition? :indent line)
+                                      (let [block-text (string/join " " (:remains current-context))]
+                                        (-> current-context 
+                                            (update-doc append-text block-text)
+                                            (update-doc append-error-unexpected-indentation)
+                                            clear-remains
+                                            pop-state))
+                                      :else
+                                      (recur (-> current-context
+                                                 forward
+                                                 (add-line-to-remains line)))))
                               ;; EOF, create paragraph & return
                               (let [block-text (string/join " " (:remains current-context))]
                                 (-> current-context

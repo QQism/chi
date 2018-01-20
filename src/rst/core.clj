@@ -173,8 +173,9 @@
     :iid (get-iid)
     :children [(create-paragraph description)]}))
 
-(defn create-blockquote []
+(defn create-blockquote [indent]
   {:type :blockquotes
+   :indent indent
    :iid (get-iid)
    :children []})
 
@@ -297,9 +298,9 @@
   (let [transition (create-transition)]
     (append-transition doc transition)))
 
-(defn append-blockquote-body->indent [doc indent]
-  (let [blockquote-node (create-blockquote)
-        ]
+(defn append-blockquote-body->indent [doc lines lines-indent current-indent]
+  (let [raw-indent (+ lines-indent current-indent)
+        blockquote-node (create-blockquote raw-indent)]
     (append-node doc blockquote-node)))
 
 (def body->blank {:name :blank,
@@ -501,16 +502,37 @@
                                   clear-remains
                                   pop-state))))})
 
+(defn read-indented-lines [context indent]
+  (let [{text-lines :remains} context
+        indented-pattern (re-pattern (str " {" indent "}(.*)"))]
+    (loop [indented-lines text-lines
+           current-context context]
+      (if (not-eof? current-context)
+        (let [line (current-line current-context)]
+          (if-let [match (re-matches indented-pattern line)]
+            (recur (conj indented-lines (nth match 1)) (forward current-context))
+            (if (match-transition :blank line)
+              (recur indented-lines (forward current-context))
+              [indented-lines
+               (-> current-context
+                   forward
+                   clear-remains)])))
+        [indented-lines
+         (-> current-context
+             forward
+             clear-remains)]))))
+
 (def body->indent {:name :indent,
                    :state :body,
                    :parse (fn [context [line indent-str text]]
-                            (let [indent (count indent-str)]
-                              (do
-                               (println (str "Line: " line))
-                               (println (str "Line: " indent))
-                               (println (str "Line: " text))
-                               (forward context)
-                               )))})
+                            (let [indent (count indent-str)
+                                  current-ident (:indent context)
+                                  [lines next-context] (read-indented-lines context indent)]
+                              (-> next-context
+                                  (update-doc append-blockquote-body->indent
+                                              lines
+                                              indent
+                                              current-ident))))})
 
 ;;TODO: need to figure out the way to handle bullet-list state and indent
 (def body->bullet {:name :bullet,
@@ -583,7 +605,7 @@
 ;;    :text
 ;;    :transitions (find-matched-transition :text))
 
-(def content-lines (-> (io/resource "list.rst")
+(def content-lines (-> (io/resource "blockquotes.rst")
                slurp
                (string/split #"\r|\n")
                ;; Remove right whitespaces
@@ -592,32 +614,6 @@
                vec))
 
 (re-matches #" {1}(.*)" " - Hello")
-
-(defn read-indented-lines [context indent]
-  (let [{current-idx :current-idx remains :remains} context
-        indented-pattern (re-pattern (str " {" indent "}(.*)"))]
-    (loop [indented-lines remains
-           current-context context]
-      (if (not-eof? current-context)
-        (let [line (current-line current-context)]
-          (if-let [match (re-matches indented-pattern line)]
-            (recur (conj indented-lines (nth match 1)) (forward current-context))
-            (if (match-transition :blank line)
-              (recur indented-lines (forward current-context))
-              [indented-lines
-               (-> current-context
-                   forward
-                   clear-remains)])))
-        [indented-lines
-         (-> current-context
-             forward
-             clear-remains)]))))
-
-;;(read-indented-lines
-;; (-> content-lines
-;;     make-context
-;;     forward forward
-;;     (add-line-to-remains "First Item")) 2)
 
 (defn zip-doc [doc]
   (z/zipper map? ;;#(not= (:type %) :text)

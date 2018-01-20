@@ -47,9 +47,10 @@
   (clear-remains [_] (update-remains _ []))
   (remains? [_] (-> _ :remains empty? not)))
 
-(defn make-context [doc lines]
+(defn make-context [doc lines indent]
   (map->DocumentContext {:doc doc
                          :lines lines
+                         :indent indent
                          :current-idx 0
                          :states [:body]
                          :remains []
@@ -489,7 +490,14 @@
 
 (def body->indent {:name :indent,
                    :state :body,
-                   :parse (fn [context match])})
+                   :parse (fn [context [line indent-str text]]
+                            (let [indent (count indent-str)]
+                              (do
+                               (println (str "Line: " line))
+                               (println (str "Line: " indent))
+                               (println (str "Line: " text))
+                               (forward context)
+                               )))})
 
 ;;TODO: need to figure out the way to handle bullet-list state and indent
 (def body->bullet {:name :bullet,
@@ -612,10 +620,9 @@
       (parse context transition match))
     context))
 
-(defn process-document [document-lines]
-  (let [lines document-lines
-        init-doc (zip-doc {:type :root, :iid 1, :children []})
-        init-context (make-context init-doc lines)]
+(defn process-lines [lines doc-node indent]
+  (let [init-doc (zip-doc doc-node)
+        init-context (make-context init-doc lines indent)]
    (loop [context init-context]
      (if (not-eof? context)
        (let [line (current-line context)
@@ -634,4 +641,9 @@
            :doc
            z/root)))))
 
-;;(process-document content-lines)
+(defn process-document [document-lines]
+  (let [root-node {:type :root :iid (get-iid) :children []}
+        no-indent 0]
+    (process-lines document-lines root-node no-indent)))
+
+(process-document content-lines)

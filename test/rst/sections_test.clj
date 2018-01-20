@@ -219,6 +219,7 @@
                                       :value "Section Title"})])})
             error => (contains
                       {:type :error
+                       :level 2
                        :children (just
                                   [(contains
                                     {:type :paragraph
@@ -293,6 +294,7 @@
                                      :value "Section Title"})])})
             error => (contains
                       {:type :error
+                       :level 2
                        :children (just
                                   [(contains
                                     {:type :paragraph
@@ -319,6 +321,7 @@
         (let [error (-> root :children first)]
           error => (contains
                     {:type :error
+                     :level 4
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -354,6 +357,7 @@
         (let [[error paragraph] (:children root)]
           error => (contains
                     {:type :error
+                     :level 4
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -395,6 +399,7 @@
         (let [error (-> root :children first)]
           error => (contains
                     {:type :error
+                     :level 4
                      :children (just
                                 [(contains
                                   {:type :paragraph

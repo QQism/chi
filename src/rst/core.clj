@@ -129,16 +129,22 @@
   {:type :transition
    :iid (get-iid)})
 
+(def error-levels {:debug    0
+                   :info     1
+                   :warning  2
+                   :error    3
+                   :severe   4})
+
 (defn create-error
-  ([description block-text]
+  ([description level block-text]
    {:type :error
-    :level 1
+    :level (level error-levels)
     :iid (get-iid)
     :children [(create-paragraph description)
                (create-preserve block-text)]})
-  ([description]
+  ([description level]
    {:type :error
-    :level 1
+    :level (level error-levels)
     :iid (get-iid)
     :children [(create-paragraph description)]}))
 
@@ -190,25 +196,29 @@
 
 (defn append-error-section-title-too-short [doc style text-lines]
   (let [block-text (string/join "\r\n" text-lines)
-        error (create-error (str "Title " style " too short." )
+        error (create-error (str "Title " style " too short.")
+                            :warning
                             block-text)]
     (append-error doc error)))
 
 (defn append-error-section-mismatching-underline [doc text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Missing matching underline for section title overline."
+                            :severe
                             block-text)]
     (append-error doc error)))
 
 (defn append-error-section-mismatching-overline-underline [doc text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Title overline & underline mismatch."
+                            :severe
                             block-text)]
     (append-error doc error)))
 
 (defn append-error-incomplete-section-title [doc text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Incomplete section title."
+                            :severe
                             block-text)]
     (append-error doc error)))
 
@@ -251,7 +261,7 @@
                                                          new-text-lines))))
 
 (defn append-error-doc-end-with-transition [doc]
-  (let [error (create-error "Document may not end with a transition.")]
+  (let [error (create-error "Document may not end with a transition." :error)]
     (append-error doc error)))
 
 (defn append-transition-line->blank [doc]

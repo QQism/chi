@@ -623,23 +623,16 @@
 (defn process-lines [lines doc-node indent]
   (let [init-doc (zip-doc doc-node)
         init-context (make-context init-doc lines indent)]
-   (loop [context init-context]
-     (if (not-eof? context)
-       (let [line (current-line context)
-             current-state (current-state context)
-             [transition match] (next-transition current-state line)
-             new-context (parse context transition match)]
-         (do
-           ;;(println new-doc)
-           ;;(println "PATH")
-           ;;(println line)
-           ;;(println (get-iid-path new-doc))
-           ;;(println new-context)
-           ;;(println transition)
-           (recur new-context)))
-       (-> (clean-up-remains context)
-           :doc
-           z/root)))))
+    (loop [context init-context]
+      (if (not-eof? context)
+        (let [line (current-line context)
+              current-state (current-state context)
+              [transition match] (next-transition current-state line)
+              new-context (parse context transition match)]
+          (recur new-context))
+        (-> (clean-up-remains context)
+            :doc
+            z/root)))))
 
 (defn process-document [document-lines]
   (let [root-node {:type :root :iid (get-iid) :children []}

@@ -300,8 +300,8 @@
   (let [transition (create-transition)]
     (append-transition doc transition)))
 
-(defn append-applicable-error-blockquote-no-end-blank-line [doc lines]
-  (if (not (match-transition? :blank (peek lines)))
+(defn append-applicable-error-blockquote-no-end-blank-line [doc lines eof?]
+  (if (not (or (match-transition? :blank (peek lines)) eof?))
     (let [error (create-error "Block quote ends without a blank line; unexpected unindent." :warning)]
       (append-error doc error))
     doc))
@@ -315,8 +315,7 @@
         blockquote (create-blockquote raw-indent)
         processed-blockquote (process-lines lines blockquote :body lines-indent)]
     (-> doc
-        (append-node processed-blockquote)
-        (append-applicable-error-blockquote-no-end-blank-line lines))))
+        (append-node processed-blockquote))))
 
 (def body->blank {:name :blank,
                   :state :body,
@@ -548,12 +547,16 @@
                    :parse (fn [context [line indent-str text]]
                             (let [indent (count indent-str)
                                   current-ident (:indent context)
-                                  [lines next-context] (read-indented-lines context indent)]
+                                  [lines next-context] (read-indented-lines context indent)
+                                  eof? (eof? next-context)]
                               (-> next-context
                                   (update-doc append-blockquote-body->indent
                                               lines
                                               indent
-                                              current-ident))))})
+                                              current-ident)
+                                  (update-doc append-applicable-error-blockquote-no-end-blank-line
+                                              lines
+                                              eof?))))})
 
 ;;TODO: need to figure out the way to handle bullet-list state and indent
 (def body->bullet {:name :bullet,

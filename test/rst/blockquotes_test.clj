@@ -189,11 +189,11 @@
                           :children #(-> % count (= 2))})
           (let [[paragraph-1st paragraph-2nd] (:children blockquote)]
             paragraph-1st => (contains
-                          {:type :paragraph
-                           :children (just
-                                      [(contains
-                                        {:type :text
-                                         :value "Lorem Ipsum is simply dummy 's standard dummy text ever"})])})
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Lorem Ipsum is simply dummy 's standard dummy text ever"})])})
             paragraph-2nd => (contains
                               {:type :paragraph
                                :children (just
@@ -215,11 +215,11 @@
                           :children #(-> % count (= 2))})
           (let [[paragraph-1st paragraph-2nd] (:children blockquote)]
             paragraph-1st => (contains
-                          {:type :paragraph
-                           :children (just
-                                      [(contains
-                                        {:type :text
-                                         :value "Lorem Ipsum is simply dummy 's standard dummy text ever"})])})
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Lorem Ipsum is simply dummy 's standard dummy text ever"})])})
             paragraph-2nd => (contains
                               {:type :paragraph
                                :children (just
@@ -243,11 +243,11 @@
                           :children #(-> % count (= 2))})
           (let [[paragraph-1st error] (:children blockquote)]
             paragraph-1st => (contains
-                          {:type :paragraph
-                           :children (just
-                                      [(contains
-                                        {:type :text
-                                         :value "Lorem Ipsum is simply dummy 's standard dummy text ever"})])})
+                              {:type :paragraph
+                               :children (just
+                                          [(contains
+                                            {:type :text
+                                             :value "Lorem Ipsum is simply dummy 's standard dummy text ever"})])})
             error => (contains
                       {:type :error
                        :level 4

@@ -19,7 +19,8 @@
   (eof? [_])
   (not-eof? [_])
   (eof-on-next? [_])
-  (not-eof-on-next? [_]))
+  (not-eof-on-next? [_])
+  (indented? [_]))
 
 (defprotocol IStateManagement
   (push-state [_ state])
@@ -31,7 +32,7 @@
   (remains? [_]))
 
 (defrecord DocumentContext
-    [doc lines current-idx states remains reported-level]
+    [doc lines current-idx states indent remains reported-level]
   IReadingLines
   (current-line [_] (nth lines current-idx))
   (next-line [_] (nth lines (inc current-idx)))
@@ -40,6 +41,7 @@
   (not-eof? [_] (not (eof? _)))
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
   (not-eof-on-next? [_] (not (eof-on-next? _)))
+  (indented? [_] (> indent 0))
   IStateManagement
   (push-state [_ state] (update _ :states conj state))
   (pop-state [_] (update _ :states pop))
@@ -242,22 +244,31 @@
 (defn append-error-section-mismatching-underline [doc text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Missing matching underline for section title overline."
-                            :severe
-                            block-text)]
+                            :severe block-text)]
     (append-error doc error)))
 
 (defn append-error-section-mismatching-overline-underline [doc text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Title overline & underline mismatch."
-                            :severe
-                            block-text)]
+                            :severe block-text)]
     (append-error doc error)))
 
 (defn append-error-incomplete-section-title [doc text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Incomplete section title."
-                            :severe
-                            block-text)]
+                            :severe block-text)]
+    (append-error doc error)))
+
+(defn append-error-unexpected-section-title [doc text-lines]
+  (let [block-text (string/join "\r\n" text-lines)
+        error (create-error "Unexpected section title."
+                            :severe block-text)]
+    (append-error doc error)))
+
+(defn append-error-unexpected-section-title-or-transition [doc text-lines]
+  (let [block-text (string/join "\r\n" text-lines)
+        error (create-error "Unexpected section title or transition."
+                            :severe block-text)]
     (append-error doc error)))
 
 (defn is-section-title-short? [style text-lines]
@@ -325,11 +336,21 @@
 (def body->line {:name :line,
                  :state :body,
                  :parse (fn [context _]
-                          (let [line (current-line context)]
-                            (-> context
-                                forward
-                                (add-line-to-remains line)
-                                (push-state :line))))})
+                          (let [line (current-line context)
+                                short-line? (< (count line) 4)]
+                            (if (indented? context)
+                              (if short-line?
+                                (-> context
+                                    forward
+                                    (add-line-to-remains line)
+                                    (push-state :text))
+                                (-> context
+                                    (update-doc append-error-unexpected-section-title-or-transition [line])
+                                    forward))
+                              (-> context
+                                  forward
+                                  (add-line-to-remains line)
+                                  (push-state :line)))))})
 
 (defn append-text [doc block-text]
   (let [paragraph (create-paragraph block-text)]
@@ -509,7 +530,8 @@
                                 line (current-line context)
                                 line-count (count line)
                                 short-line? (< line-count 4)
-                                shorter-than-prev? (< line-count (count prev-text-line))]
+                                shorter-than-prev? (< line-count (count prev-text-line))
+                                text-lines [prev-text-line line]]
                             ;; There are two possible cases:
                             ;; - line is shorter than the text (in remains)
                             ;;     AND line is shorter than 4 characters
@@ -518,11 +540,17 @@
                             ;;     | create the section
                             (if (and short-line? shorter-than-prev?)
                               (parse context text->text match)
-                              (-> context
-                                  (update-doc append-section-text->line [prev-text-line line])
-                                  forward
-                                  clear-remains
-                                  pop-state))))})
+                              (if (indented? context)
+                                (-> context
+                                    (update-doc append-error-unexpected-section-title text-lines)
+                                    forward
+                                    clear-remains
+                                    pop-state)
+                                (-> context
+                                    (update-doc append-section-text->line text-lines)
+                                    forward
+                                    clear-remains
+                                    pop-state)))))})
 
 (defn read-indented-lines [context indent]
   (let [{text-lines :remains} context

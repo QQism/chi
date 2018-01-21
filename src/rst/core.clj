@@ -303,13 +303,42 @@
         (append-applicable-error-section-title-too-short section-style
                                                          text-lines))))
 
+
+(defn document-begin? [doc]
+  (let [siblings (z/children doc)
+        siblings-count (count siblings)]
+    (or (= siblings-count 0)
+        (and (= siblings-count 1)
+             (-> siblings first :type (= :header))))))
+
+(defn last-sibling-transition? [doc]
+  (-> doc z/down z/rightmost z/node :type (= :transition)))
+
+(defn append-applicable-error-doc-start-with-transition [doc]
+  (if (document-begin? doc)
+    (let [error (create-error "Document or section may not begin with a transition."
+                              :error)]
+      (append-error doc error))
+    doc))
+
+(defn append-applicable-error-adjacent-transitions [doc]
+  (if (last-sibling-transition? doc)
+    (let [error (create-error "At least one body element must separate transitions; adjacent transitions are not allowed."
+                              :error)]
+      (append-error doc error))
+    doc))
+
 (defn append-error-doc-end-with-transition [doc]
-  (let [error (create-error "Document may not end with a transition." :error)]
+  (let [error (create-error "Document may not end with a transition."
+                            :error)]
     (append-error doc error)))
 
 (defn append-transition-line->blank [doc]
   (let [transition (create-transition)]
-    (append-transition doc transition)))
+    (-> doc
+        append-applicable-error-doc-start-with-transition
+        append-applicable-error-adjacent-transitions
+        (append-transition transition))))
 
 (defn append-applicable-error-blockquote-no-end-blank-line [doc lines eof?]
   (if (not (or (match-transition? :blank (peek lines)) eof?))

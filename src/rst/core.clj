@@ -5,7 +5,7 @@
              [clojure.zip :as z]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
-(defn ^:declared process-lines [lines doc-node init-state indent])
+(defn ^:declared process-lines [lines node init-state indent])
 
 (def error-levels {:debug    0
                    :info     1
@@ -33,7 +33,7 @@
   (remains? [_]))
 
 (defrecord DocumentContext
-    [doc lines current-idx states indent remains reported-level]
+    [ast lines current-idx states indent remains reported-level]
   IReadingLines
   (current-line [_] (nth lines current-idx))
   (next-line [_] (nth lines (inc current-idx)))
@@ -52,8 +52,8 @@
   (clear-remains [_] (update-remains _ []))
   (remains? [_] (-> _ :remains empty? not)))
 
-(defn make-context [lines doc init-state indent]
-  (map->DocumentContext {:doc doc
+(defn make-context [lines ast init-state indent]
+  (map->DocumentContext {:ast ast
                          :lines lines
                          :indent indent
                          :current-idx 0
@@ -61,28 +61,28 @@
                          :remains []
                          :reported-level (:info error-levels)}))
 
-(defn update-doc [context f & args]
-  (update context :doc #(apply f % args)))
+(defn update-ast [context f & args]
+  (update context :ast #(apply f % args)))
 
 (def iid-counter (atom 0))
 
 (defn get-iid []
   (swap! iid-counter inc))
 
-(defn get-iid-path [doc]
-  (-> doc
+(defn get-iid-path [ast]
+  (-> ast
       z/path
       (->> (map :iid))
-      (conj (:iid (z/node doc)))
+      (conj (:iid (z/node ast)))
       reverse))
 
-(defn up-to-root [doc]
-  (let [depth (count (z/path doc))]
-    (reduce (fn [d _] (z/up d)) doc (range depth))))
+(defn up-to-root [ast]
+  (let [depth (count (z/path ast))]
+    (reduce (fn [d _] (z/up d)) ast (range depth))))
 
-(defn children-loc [doc]
-  (let [children-count (-> doc z/children count)
-        first-child (z/down doc)]
+(defn children-loc [ast]
+  (let [children-count (-> ast z/children count)
+        first-child (z/down ast)]
     (take children-count (iterate z/right first-child))))
 
 (def non-alphanum-7-bit #"([\!-\/\:-\@\[-\`\{-\~])")
@@ -184,40 +184,40 @@
    :iid (get-iid)
    :children []})
 
-(defn append-node [doc node]
-  (-> doc (z/append-child node)))
+(defn append-node [ast node]
+  (-> ast (z/append-child node)))
 
-(defn append-error [doc error]
-  (append-node doc error))
+(defn append-error [ast error]
+  (append-node ast error))
 
-(defn move-to-latest-child [doc]
-  (-> doc z/down z/rightmost))
+(defn move-to-latest-child [ast]
+  (-> ast z/down z/rightmost))
 
-(defn append-section [doc section]
+(defn append-section [ast section]
   ;; Append the section as the new child of the current node location
   ;; Move the location to the position of the new child
-  (-> doc
+  (-> ast
       (append-node section)
       move-to-latest-child))
 
-(defn append-transition [doc transition]
-  (append-node doc transition))
+(defn append-transition [ast transition]
+  (append-node ast transition))
 
-(defn find-loc-with-iid [doc-loc child-iid]
-  (if (-> doc-loc z/node :iid (= child-iid))
-    doc-loc
+(defn find-loc-with-iid [ast child-iid]
+  (if (-> ast z/node :iid (= child-iid))
+    ast
     (some #(if (-> % z/node :iid (= child-iid)) %)
-          (children-loc doc-loc))))
+          (children-loc ast))))
 
 ;; TODO: add the current loc id to path
-(defn find-matching-section-loc [doc-loc style]
+(defn find-matching-section-loc [ast style]
   ;; Travel in the whole doc from top to the current path
   ;; - if there is a section having the same style as the new section
   ;;   | return the location
   ;; - else
   ;;   | return nil
-  (let [current-iid-path (get-iid-path doc-loc)]
-    (loop [current-loc (up-to-root doc-loc)
+  (let [current-iid-path (get-iid-path ast)]
+    (loop [current-loc (up-to-root ast)
            depth 0]
       (if (< depth (count current-iid-path))
         (let [current-iid (nth current-iid-path depth)]
@@ -227,50 +227,50 @@
                 current-loc
                 (recur section-loc (inc depth))))))))))
 
-(defn append-section-in-matched-location [doc section]
+(defn append-section-in-matched-location [ast section]
   ;; Find the matching parent section location
   ;; Append the new section as a child of the current path
   (let [style (:style section)]
-    (if-let [matched-parent-section (find-matching-section-loc doc style)]
+    (if-let [matched-parent-section (find-matching-section-loc ast style)]
       (append-section matched-parent-section section)
-      (append-section doc section))))
+      (append-section ast section))))
 
-(defn append-error-section-title-too-short [doc style text-lines]
+(defn append-error-section-title-too-short [ast style text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error (str "Title " style " too short.")
                             :warning
                             block-text)]
-    (append-error doc error)))
+    (append-error ast error)))
 
-(defn append-error-section-mismatching-underline [doc text-lines]
+(defn append-error-section-mismatching-underline [ast text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Missing matching underline for section title overline."
                             :severe block-text)]
-    (append-error doc error)))
+    (append-error ast error)))
 
-(defn append-error-section-mismatching-overline-underline [doc text-lines]
+(defn append-error-section-mismatching-overline-underline [ast text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Title overline & underline mismatch."
                             :severe block-text)]
-    (append-error doc error)))
+    (append-error ast error)))
 
-(defn append-error-incomplete-section-title [doc text-lines]
+(defn append-error-incomplete-section-title [ast text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Incomplete section title."
                             :severe block-text)]
-    (append-error doc error)))
+    (append-error ast error)))
 
-(defn append-error-unexpected-section-title [doc text-lines]
+(defn append-error-unexpected-section-title [ast text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Unexpected section title."
                             :severe block-text)]
-    (append-error doc error)))
+    (append-error ast error)))
 
-(defn append-error-unexpected-section-title-or-transition [doc text-lines]
+(defn append-error-unexpected-section-title-or-transition [ast text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         error (create-error "Unexpected section title or transition."
                             :severe block-text)]
-    (append-error doc error)))
+    (append-error ast error)))
 
 (defn is-section-title-short? [style text-lines]
   (case style
@@ -282,80 +282,80 @@
       (< (count overline) (count text)))
     false))
 
-(defn append-applicable-error-section-title-too-short [doc style text-lines]
+(defn append-applicable-error-section-title-too-short [ast style text-lines]
   (if (is-section-title-short? style text-lines)
-    (append-error-section-title-too-short doc style text-lines)
-    doc))
+    (append-error-section-title-too-short ast style text-lines)
+    ast))
 
-(defn append-section-line->text-line [doc text-lines]
+(defn append-section-line->text-line [ast text-lines]
   (let [[overline text _] text-lines
         section-style "overline"
         new-section (create-section text overline section-style)]
-    (-> doc (append-section-in-matched-location new-section)
+    (-> ast (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short section-style
                                                          text-lines))))
 
-(defn append-section-text->line [doc text-lines]
+(defn append-section-text->line [ast text-lines]
   (let [[text underline] text-lines
         section-style "underline"
         new-section (create-section text underline section-style)]
-    (-> doc
+    (-> ast
         (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short section-style
                                                          text-lines))))
 
 
-(defn document-begin? [doc]
-  (let [siblings (z/children doc)
+(defn document-begin? [ast]
+  (let [siblings (z/children ast)
         siblings-count (count siblings)]
     (or (= siblings-count 0)
         (and (= siblings-count 1)
              (-> siblings first :type (= :header))))))
 
-(defn last-sibling-transition? [doc]
-  (-> doc z/down z/rightmost z/node :type (= :transition)))
+(defn last-sibling-transition? [ast]
+  (-> ast z/down z/rightmost z/node :type (= :transition)))
 
-(defn append-applicable-error-doc-start-with-transition [doc]
-  (if (document-begin? doc)
+(defn append-applicable-error-doc-start-with-transition [ast]
+  (if (document-begin? ast)
     (let [error (create-error "Document or section may not begin with a transition."
                               :error)]
-      (append-error doc error))
-    doc))
+      (append-error ast error))
+    ast))
 
-(defn append-applicable-error-adjacent-transitions [doc]
-  (if (last-sibling-transition? doc)
+(defn append-applicable-error-adjacent-transitions [ast]
+  (if (last-sibling-transition? ast)
     (let [error (create-error "At least one body element must separate transitions; adjacent transitions are not allowed."
                               :error)]
-      (append-error doc error))
-    doc))
+      (append-error ast error))
+    ast))
 
-(defn append-error-doc-end-with-transition [doc]
+(defn append-error-doc-end-with-transition [ast]
   (let [error (create-error "Document may not end with a transition."
                             :error)]
-    (append-error doc error)))
+    (append-error ast error)))
 
-(defn append-transition-line->blank [doc]
+(defn append-transition-line->blank [ast]
   (let [transition (create-transition)]
-    (-> doc
+    (-> ast
         append-applicable-error-doc-start-with-transition
         append-applicable-error-adjacent-transitions
         (append-transition transition))))
 
-(defn append-applicable-error-blockquote-no-end-blank-line [doc lines eof?]
+(defn append-applicable-error-blockquote-no-end-blank-line [ast lines eof?]
   (if (not (or (match-transition? :blank (peek lines)) eof?))
     (let [error (create-error "Block quote ends without a blank line; unexpected unindent." :warning)]
-      (append-error doc error))
-    doc))
+      (append-error ast error))
+    ast))
 
-(defn append-error-unexpected-indentation [doc]
+(defn append-error-unexpected-indentation [ast]
   (let [error (create-error "Unexpected indentation." :error)]
-    (append-error doc error)))
+    (append-error ast error)))
 
-(defn append-blockquote-body->indent [doc lines lines-indent current-indent]
+(defn append-blockquote-body->indent [ast lines lines-indent current-indent]
   (let [raw-indent (+ lines-indent current-indent)
         blockquote (create-blockquote raw-indent)
         processed-blockquote (process-lines lines blockquote :body lines-indent)]
-    (-> doc
+    (-> ast
         (append-node processed-blockquote))))
 
 (def body->blank {:name :blank,
@@ -375,16 +375,20 @@
                                     (add-line-to-remains line)
                                     (push-state :text))
                                 (-> context
-                                    (update-doc append-error-unexpected-section-title-or-transition [line])
+                                    (update-ast append-error-unexpected-section-title-or-transition [line])
                                     forward))
                               (-> context
                                   forward
                                   (add-line-to-remains line)
                                   (push-state :line)))))})
 
-(defn append-paragraph [doc block-text]
+(defn append-paragraph [ast block-text]
   (let [paragraph (create-paragraph block-text)]
-    (append-node doc paragraph)))
+    (append-node ast paragraph)))
+
+(defn append-text [ast text]
+  (let [text (create-inline-markup-text text)]
+    (append-node ast text)))
 
 (def body->text
   {:name :text,
@@ -400,7 +404,7 @@
                   ;; next line if EOF
                   (let [text-lines (-> context :remains (conj line))]
                     (-> context
-                        (update-doc append-paragraph (string/join " " text-lines))
+                        (update-ast append-paragraph (string/join " " text-lines))
                         forward
                         clear-remains))))))})
 
@@ -414,7 +418,7 @@
                                  prev-short-line? (< (count prev-text-line) 4)]
                              (if prev-short-line?
                                (-> context
-                                   (update-doc append-paragraph prev-text-line)
+                                   (update-ast append-paragraph prev-text-line)
                                    forward
                                    clear-remains
                                    pop-state)
@@ -424,12 +428,12 @@
                                      (if (match-transition? :blank line)
                                        (recur (-> current-context forward))
                                        (-> current-context
-                                           (update-doc append-transition-line->blank)
+                                           (update-ast append-transition-line->blank)
                                            clear-remains
                                            pop-state)))
                                    (-> current-context
-                                       (update-doc append-transition-line->blank)
-                                       (update-doc append-error-doc-end-with-transition)
+                                       (update-ast append-transition-line->blank)
+                                       (update-ast append-error-doc-end-with-transition)
                                        clear-remains
                                        pop-state))))))})
 
@@ -457,7 +461,7 @@
                                 (if (match-transition? :line next-text-line)
                                   (if (= prev-text-line next-text-line)
                                     (-> context
-                                        (update-doc append-section-line->text-line next-text-lines)
+                                        (update-ast append-section-line->text-line next-text-lines)
                                         forward
                                         forward
                                         clear-remains
@@ -470,7 +474,7 @@
                                           pop-state
                                           (push-state :text))
                                       (-> context
-                                          (update-doc append-error-section-mismatching-overline-underline
+                                          (update-ast append-error-section-mismatching-overline-underline
                                                       next-text-lines)
                                           forward
                                           forward
@@ -484,7 +488,7 @@
                                         pop-state
                                         (push-state :text))
                                     (-> context
-                                        (update-doc append-error-section-mismatching-underline
+                                        (update-ast append-error-section-mismatching-underline
                                                     next-text-lines)
                                         forward
                                         forward
@@ -497,7 +501,7 @@
                                     pop-state
                                     (push-state :text))
                                 (-> context
-                                    (update-doc append-error-incomplete-section-title current-text-lines)
+                                    (update-ast append-error-incomplete-section-title current-text-lines)
                                     forward
                                     clear-remains
                                     pop-state)))))})
@@ -514,7 +518,7 @@
                            (let [text-lines (:remains context)
                                  block-text (string/join " " text-lines)]
                              (-> context
-                                 (update-doc append-paragraph block-text)
+                                 (update-ast append-paragraph block-text)
                                  forward
                                  clear-remains
                                  pop-state)))})
@@ -531,14 +535,14 @@
                                       ;; blank line, create paragraph & return
                                       (let [block-text (string/join " " (:remains current-context))]
                                         (-> current-context
-                                            (update-doc append-paragraph block-text)
+                                            (update-ast append-paragraph block-text)
                                             clear-remains
                                             pop-state))
                                       (match-transition? :indent line)
                                       (let [block-text (string/join " " (:remains current-context))]
                                         (-> current-context 
-                                            (update-doc append-paragraph block-text)
-                                            (update-doc append-error-unexpected-indentation)
+                                            (update-ast append-paragraph block-text)
+                                            (update-ast append-error-unexpected-indentation)
                                             clear-remains
                                             pop-state))
                                       :else
@@ -548,7 +552,7 @@
                               ;; EOF, create paragraph & return
                               (let [block-text (string/join " " (:remains current-context))]
                                 (-> current-context
-                                    (update-doc append-paragraph block-text)
+                                    (update-ast append-paragraph block-text)
                                     forward
                                     clear-remains
                                     pop-state)))))})
@@ -572,12 +576,12 @@
                               (parse context text->text match)
                               (if (indented? context)
                                 (-> context
-                                    (update-doc append-error-unexpected-section-title text-lines)
+                                    (update-ast append-error-unexpected-section-title text-lines)
                                     forward
                                     clear-remains
                                     pop-state)
                                 (-> context
-                                    (update-doc append-section-text->line text-lines)
+                                    (update-ast append-section-text->line text-lines)
                                     forward
                                     clear-remains
                                     pop-state)))))})
@@ -613,11 +617,11 @@
                                   [lines next-context] (read-indented-lines context indent)
                                   eof? (eof? next-context)]
                               (-> next-context
-                                  (update-doc append-blockquote-body->indent
+                                  (update-ast append-blockquote-body->indent
                                               lines
                                               indent
                                               current-ident)
-                                  (update-doc append-applicable-error-blockquote-no-end-blank-line
+                                  (update-ast append-applicable-error-blockquote-no-end-blank-line
                                               lines
                                               eof?))))})
 
@@ -702,12 +706,12 @@
 
 (re-matches #" {1}(.*)" " - Hello")
 
-(defn zip-doc [doc]
+(defn zip-node [node]
   (z/zipper map? ;;#(not= (:type %) :text)
             #(-> % :children seq)
-            (fn [node children]
-              (assoc node :children (vec children)))
-            doc))
+            (fn [n children]
+              (assoc n :children (vec children)))
+            node))
 
 (defn clean-up-remains [context]
   (if (remains? context)
@@ -716,9 +720,9 @@
       (parse context transition match))
     context))
 
-(defn process-lines [lines doc-node init-state indent]
-  (let [init-doc (zip-doc doc-node)
-        init-context (make-context lines init-doc init-state indent)]
+(defn process-lines [lines node init-state indent]
+  (let [init-ast (zip-node node)
+        init-context (make-context lines init-ast init-state indent)]
     (loop [context init-context]
       (if (not-eof? context)
         (let [line (current-line context)
@@ -727,7 +731,7 @@
               new-context (parse context transition match)]
           (recur new-context))
         (-> (clean-up-remains context)
-            :doc
+            :ast
             z/root)))))
 
 (defn process-document [document-lines]

@@ -107,7 +107,7 @@
 (re-matches (:line patterns) "***")
 (re-matches (:bullet patterns) "* Item")
 
-;;(let [[_ style spacing text] (re-matches (:bullet patterns) "*  hello - this")
+;;(let [[_ style spacing text] (re-matches (:bullet patterns) "*   Hello")
 ;;      indent (inc (count spacing))]
 ;;  (do
 ;;    (println (str "Style: " style))
@@ -350,6 +350,15 @@
   (if (not (or (match-transition? :blank (peek lines)) eof?))
     (let [error (create-error "Block quote ends without a blank line; unexpected unindent." :warning)]
       (append-error ast error))
+    ast))
+
+(defn append-applicable-error-bullet-no-end-blank-line [ast lines current-idx]
+  (if (> current-idx 0)
+    (let [prev-line (nth lines (dec current-idx))]
+      (if (match-transition? :blank prev-line)
+        ast
+        (let [error (create-error "Bullet list ends without a blank line; unexpected unindent." :warning)]
+          (append-error ast error))))
     ast))
 
 (defn append-error-unexpected-indentation [ast]
@@ -620,11 +629,6 @@
          (-> current-context
              clear-remains)]))))
 
-(def bullet->blank {:name :blank
-                    :state :bullet
-                    :parse (fn [context _]
-                             (forward context))})
-
 (def body->indent {:name :indent,
                    :state :body,
                    :parse (fn [context [line indent-str text]]
@@ -655,8 +659,7 @@
                                   (update-ast append-bullet-list style)
                                   (update-ast append-bullet-item lines indent)
                                   clear-remains
-                                  (push-state :bullet)))
-                            )})
+                                  (push-state :bullet))))})
 
 (def body->enum {:name :enum,
                  :state :body,
@@ -669,6 +672,24 @@
 (def body->option-marker {:name :enum,
                           :state :body,
                           :parse (fn [context match])})
+
+(def bullet->blank {:name :blank
+                    :state :bullet
+                    :parse (fn [context _]
+                             (forward context))})
+
+(def bullet->indent {:name :indent
+                     :state :bullet
+                     :parse (fn [context match]
+                              (let [lines (:lines context)
+                                    current-idx (:current-idx context)]
+                                (-> context
+                                    pop-state
+                                    (update-ast z/up)
+                                    (update-ast append-applicable-error-bullet-no-end-blank-line
+                                                lines
+                                                current-idx)
+                                    (parse body->indent match))))})
 
 (def states
   {:body           {:transitions [body->blank
@@ -686,7 +707,7 @@
                                   body->line
                                   body->text]}
    :bullet         {:transitions [bullet->blank
-                                  ;;bullet->indent
+                                  bullet->indent
                                   ;;bullet->bullet
                                   ;;bullet->enum
                                   ;;bullet->field-marker
@@ -754,7 +775,7 @@
 
 (defn unwrap-single-indented-document
   "If the indented document contains a single paragraph
-  unwrap the paragraph content "
+  unwrap the paragraph content"
   [context]
   (if (and (indented? context) (-> context :ast single-paragraph-document?))
     (update-ast context unwrap-root-paragraph)

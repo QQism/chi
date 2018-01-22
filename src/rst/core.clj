@@ -131,58 +131,61 @@
   (-> (match-transition transition-name line)
       nil? not))
 
+(defn create-node [m]
+  (merge {:iid (get-iid)} m))
+
 (defn create-preserve [text]
-  {:type :preserve
-   :iid (get-iid)
-   :value text})
+  (create-node {:type :preserve :value text}))
 
 (defn create-inline-markup-text [text]
   ;; TODO: parse the text into an vector of text
   ;; if there are inline-markups, parse them accordingly
-  [{:type :text
-    :iid (get-iid)
-    :value (string/trimr text)}])
+  [(create-node {:type :text
+                 :iid (get-iid)
+                 :value (string/trimr text)})])
 
 (defn create-header [text line]
-  {:type :header,
-   :iid (get-iid)
-   :children (create-inline-markup-text text)})
+  (create-node {:type :header
+                :children (create-inline-markup-text text)}))
 
 (defn create-section [text line style]
   (let [adornment (first line)]
-    {:type :section,
-     :iid (get-iid)
-     :style (str style adornment)
-     :name (normalize-section-name text)
-     :children [(create-header text line)]}))
+    (create-node {:type :section
+                  :style (str style adornment)
+                  :name (normalize-section-name text)
+                  :children [(create-header text line)]})))
 
 (defn create-paragraph [text]
-  {:type :paragraph
-   :iid (get-iid)
-   :children (create-inline-markup-text text)})
+  (create-node {:type :paragraph
+               :children (create-inline-markup-text text)}))
 
 (defn create-transition []
-  {:type :transition
-   :iid (get-iid)})
+  (create-node {:type :transition}))
 
 (defn create-error
   ([description level block-text]
-   {:type :error
-    :level (level error-levels)
-    :iid (get-iid)
-    :children [(create-paragraph description)
-               (create-preserve block-text)]})
+   (create-node {:type :error
+                 :level (level error-levels)
+                 :children [(create-paragraph description)
+                            (create-preserve block-text)]}))
   ([description level]
-   {:type :error
-    :level (level error-levels)
-    :iid (get-iid)
-    :children [(create-paragraph description)]}))
+   (create-node {:type :error
+                 :level (level error-levels)
+                 :children [(create-paragraph description)]})))
 
 (defn create-blockquote [indent]
-  {:type :blockquotes
-   :indent indent
-   :iid (get-iid)
-   :children []})
+  (create-node {:type :blockquotes
+                :indent indent
+                :children []}))
+
+(defn create-bullet-list [style]
+  (create-node {:type :bullet-list
+                :style style
+                :children []}))
+
+(defn create-bullet-item []
+  (create-node {:type :bullet-item
+                :children []}))
 
 (defn append-node [ast node]
   (-> ast (z/append-child node)))

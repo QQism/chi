@@ -381,7 +381,7 @@
                                   (add-line-to-remains line)
                                   (push-state :line)))))})
 
-(defn append-text [doc block-text]
+(defn append-paragraph [doc block-text]
   (let [paragraph (create-paragraph block-text)]
     (append-node doc paragraph)))
 
@@ -399,7 +399,7 @@
                   ;; next line if EOF
                   (let [text-lines (-> context :remains (conj line))]
                     (-> context
-                        (update-doc append-text (string/join " " text-lines))
+                        (update-doc append-paragraph (string/join " " text-lines))
                         forward
                         clear-remains))))))})
 
@@ -413,7 +413,7 @@
                                  prev-short-line? (< (count prev-text-line) 4)]
                              (if prev-short-line?
                                (-> context
-                                   (update-doc append-text prev-text-line)
+                                   (update-doc append-paragraph prev-text-line)
                                    forward
                                    clear-remains
                                    pop-state)
@@ -513,7 +513,7 @@
                            (let [text-lines (:remains context)
                                  block-text (string/join " " text-lines)]
                              (-> context
-                                 (update-doc append-text block-text)
+                                 (update-doc append-paragraph block-text)
                                  forward
                                  clear-remains
                                  pop-state)))})
@@ -530,13 +530,13 @@
                                       ;; blank line, create paragraph & return
                                       (let [block-text (string/join " " (:remains current-context))]
                                         (-> current-context
-                                            (update-doc append-text block-text)
+                                            (update-doc append-paragraph block-text)
                                             clear-remains
                                             pop-state))
                                       (match-transition? :indent line)
                                       (let [block-text (string/join " " (:remains current-context))]
                                         (-> current-context 
-                                            (update-doc append-text block-text)
+                                            (update-doc append-paragraph block-text)
                                             (update-doc append-error-unexpected-indentation)
                                             clear-remains
                                             pop-state))
@@ -547,7 +547,7 @@
                               ;; EOF, create paragraph & return
                               (let [block-text (string/join " " (:remains current-context))]
                                 (-> current-context
-                                    (update-doc append-text block-text)
+                                    (update-doc append-paragraph block-text)
                                     forward
                                     clear-remains
                                     pop-state)))))})
@@ -599,6 +599,11 @@
          (-> current-context
              clear-remains)]))))
 
+(def bullet->blank {:name :blank
+                    :state :bullet
+                    :parse (fn [context _]
+                             (forward context))})
+
 (def body->indent {:name :indent,
                    :state :body,
                    :parse (fn [context [line indent-str text]]
@@ -620,7 +625,7 @@
                    :state :body,
                    :parse (fn [context match]
                             (-> context
-                                (push-state :bullet-list))
+                                (push-state :bulletlist))
                             )})
 
 (def body->enum {:name :enum,
@@ -650,7 +655,7 @@
                                   ;;body->anonymous
                                   body->line
                                   body->text]}
-   :bullet-list    {:transitions [body->blank
+   :bulletlist    {:transitions [bullet->blank
                                   ;;bullet->indent
                                   ;;bullet->bullet
                                   ;;bullet->enum
@@ -730,4 +735,4 @@
         init-state :body]
     (process-lines document-lines root-node init-state no-indent)))
 
-(process-document content-lines)
+;;(process-document content-lines)

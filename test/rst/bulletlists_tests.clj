@@ -8,14 +8,16 @@
         root => (contains {:type :root :children #(-> % count (= 1))})
         (let [list (-> root :children peek)
               item (-> list :children peek)]
-          list => (contains {:type :bullet-list
-                             :style "-"
-                             :children #(-> % count (= 1))})
-          item => (contains {:type :bullet-item
-                             :children (just
-                                        [(contains
-                                          {:type :text
-                                           :value "Lorem Ipsum is simply dummy text"})])}))))
+          list => (contains
+                   {:type :bullet-list
+                    :style "-"
+                    :children #(-> % count (= 1))})
+          item => (contains
+                   {:type :bullet-item
+                    :children (just
+                               [(contains
+                                 {:type :text
+                                  :value "Lorem Ipsum is simply dummy text"})])}))))
 (fact "A multi-line line bullet"
       (let [lines ["- Lorem Ipsum is simply dummy text"
                    ""
@@ -24,23 +26,25 @@
         root => (contains {:type :root :children #(-> % count (= 1))})
         (let [list (-> root :children peek)
               item (-> list :children peek)]
-          list => (contains {:type :bullet-list
-                             :style "-"
-                             :children #(-> % count (= 1))})
-          item => (contains {:type :bullet-item
-                             :children (just
-                                        [(contains
-                                          {:type :paragraph
-                                           :children (just
-                                                      [(contains
-                                                        {:type :text
-                                                         :value "Lorem Ipsum is simply dummy text"})])})
-                                         (contains
-                                          {:type :paragraph
-                                           :children (just
-                                                      [(contains
-                                                        {:type :text
-                                                         :value "Lorem Ipsum is simply dummy's standard"})])})])}))))
+          list => (contains
+                   {:type :bullet-list
+                    :style "-"
+                    :children #(-> % count (= 1))})
+          item => (contains
+                   {:type :bullet-item
+                    :children (just
+                               [(contains
+                                 {:type :paragraph
+                                  :children (just
+                                             [(contains
+                                               {:type :text
+                                                :value "Lorem Ipsum is simply dummy text"})])})
+                                (contains
+                                 {:type :paragraph
+                                  :children (just
+                                             [(contains
+                                               {:type :text
+                                                :value "Lorem Ipsum is simply dummy's standard"})])})])}))))
 
 (fact "A single line bullet item and blockquote"
       (let [lines ["-   Lorem Ipsum is simply dummy text"
@@ -49,14 +53,16 @@
         root => (contains {:type :root :children #(-> % count (= 3))})
         (let [[list error blockquote] (-> root :children)
               item (-> list :children peek)]
-          list => (contains {:type :bullet-list
-                             :style "-"
-                             :children #(-> % count (= 1))})
-          item => (contains {:type :bullet-item
-                             :children (just
-                                        [(contains
-                                          {:type :text
-                                           :value "Lorem Ipsum is simply dummy text"})])})
+          list => (contains
+                   {:type :bullet-list
+                    :style "-"
+                    :children #(-> % count (= 1))})
+          item => (contains
+                   {:type :bullet-item
+                    :children (just
+                               [(contains
+                                 {:type :text
+                                  :value "Lorem Ipsum is simply dummy text"})])})
           error => (contains
                     {:type :error
                      :level 2
@@ -74,3 +80,27 @@
                                      [(contains
                                        {:type :text
                                         :value "This is a separated blockquote"})])}))))
+
+(fact "A simple bullet list"
+      (let [lines ["- First item"
+                   "- Second item"]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 1))})
+        (let [[list] (-> root :children)
+              [item-1st item-2nd] (-> list :children)]
+          list => (contains
+                   {:type :bullet-list
+                    :style "-"
+                    :children #(-> % count (= 2))})
+          item-1st => (contains
+                       {:type :bullet-item
+                        :children (just
+                                   [(contains
+                                     {:type :text
+                                      :value "First item"})])})
+          item-2nd => (contains
+                       {:type :bullet-item
+                        :children (just
+                                   [(contains
+                                     {:type :text
+                                      :value "Second item"})])}))))

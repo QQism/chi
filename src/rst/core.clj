@@ -691,6 +691,29 @@
                                                 current-idx)
                                     (parse body->indent match))))})
 
+(def bullet->bullet {:name :bullet
+                     :state :bullet
+                     :parse (fn [context [_ style spacing text]]
+                              (do
+                                (println "Bullet->Bullet")
+                                (let [bullet-list (-> context :ast z/node)
+                                     indent (inc (count spacing))
+                                     [lines next-context] (read-indented-lines
+                                                           (-> context
+                                                               (add-line-to-remains text)
+                                                               forward)
+                                                           indent)]
+                                 (if (and (= (:type bullet-list) :bullet-list)
+                                          (= (:style bullet-list) style))
+                                   (-> next-context
+                                       (update-ast append-bullet-item lines indent)
+                                       clear-remains)
+                                   (-> next-context
+                                       (update-ast z/up)
+                                       (update-ast append-bullet-list style)
+                                       (update-ast append-bullet-item lines indent)
+                                       clear-remains)))))})
+
 (def states
   {:body           {:transitions [body->blank
                                   body->indent
@@ -708,7 +731,7 @@
                                   body->text]}
    :bullet         {:transitions [bullet->blank
                                   bullet->indent
-                                  ;;bullet->bullet
+                                  bullet->bullet
                                   ;;bullet->enum
                                   ;;bullet->field-marker
                                   ;;bullet->option-marker

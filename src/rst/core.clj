@@ -4,7 +4,8 @@
              [clojure.pprint :refer [pprint]]
              [clojure.zip :as z]))
 
-(declare process-lines)
+;; https://dev.clojure.org/jira/browse/CLJS-1871
+(defn ^:declared process-lines [lines doc-node init-state indent])
 
 (def error-levels {:debug    0
                    :info     1

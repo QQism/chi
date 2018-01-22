@@ -2,7 +2,30 @@
   (:require  [midje.sweet :refer :all]
              [rst.core :refer :all]))
 
-(fact "A simple blockquotes ends with a blank line"
+(fact "A single line blockquote ends with a blank line"
+      (let [lines ["Lorem Ipsum is simply dummy text"
+                   ""
+                   "  Lorem Ipsum is simply dummy"
+                   ""]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 2))})
+        (let [[paragraph blockquote] (:children root)]
+          paragraph => (contains
+                        {:type :paragraph
+                         :children (just
+                                    [(contains
+                                      {:type :text
+                                       :value "Lorem Ipsum is simply dummy text"})])})
+          blockquote => (contains
+                         {:type :blockquotes
+                          :indent 2
+                          :children #(-> % count (= 1))})
+          (let [[text] (:children blockquote)]
+            text => (contains
+                     {:type :text
+                      :value "Lorem Ipsum is simply dummy"})))))
+
+(fact "A multi-line blockquote ends with a blank line"
       (let [lines ["Lorem Ipsum is simply dummy text"
                    ""
                    "  Lorem Ipsum is simply dummy"
@@ -40,7 +63,7 @@
 
 
 
-(fact "A simple blockquotes ends without a blank line"
+(fact "A multi-line blockquotes ends without a blank line"
       (let [lines ["  Lorem Ipsum is simply dummy"
                    "  's standard dummy text ever"
                    ""
@@ -70,7 +93,7 @@
                                       {:type :text
                                        :value "Lorem Ipsum is simply dummy text"})])}))))
 
-(fact "A simple blockquotes ends with a blank line"
+(fact "A multi-line blockquotes starts without a blank line"
       (let [lines ["Lorem Ipsum is"
                    "simply dummy text"
                    "  Lorem Ipsum is simply dummy"

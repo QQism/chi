@@ -77,8 +77,10 @@
       reverse))
 
 (defn up-to-root [ast]
-  (let [depth (count (z/path ast))]
-    (reduce (fn [d _] (z/up d)) ast (range depth))))
+  (loop [node ast]
+    (if-let [parent (z/up node)]
+      (recur parent)
+      node)))
 
 (defn children-loc [ast]
   (let [children-count (-> ast z/children count)

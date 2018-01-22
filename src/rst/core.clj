@@ -176,7 +176,7 @@
                  :children [(create-paragraph description)]})))
 
 (defn create-blockquote [indent]
-  (create-node {:type :blockquotes
+  (create-node {:type :blockquote
                 :indent indent
                 :children []}))
 

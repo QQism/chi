@@ -107,17 +107,17 @@
 (re-matches (:line patterns) "***")
 (re-matches (:bullet patterns) "* Item")
 
-(let [[_ style spacing text] (re-matches (:bullet patterns) "*  hello - this")
-      indent (inc (count spacing))]
-  (do
-    (println (str "Style: " style))
-    (println (str "Indent: " indent))
-    (println (str "Text: " text))))
+;;(let [[_ style spacing text] (re-matches (:bullet patterns) "*  hello - this")
+;;      indent (inc (count spacing))]
+;;  (do
+;;    (println (str "Style: " style))
+;;    (println (str "Indent: " indent))
+;;    (println (str "Text: " text))))
 
 (def transition-patterns
   {:blank     {:pattern (:blank patterns)}
    :indent    {:pattern (:indent patterns)}
-   ;;:bullet    {:pattern (:bullet patterns)}
+   :bullet    {:pattern (:bullet patterns)}
    :line      {:pattern (:line patterns)}
    :text      {:pattern (:text patterns)}})
 
@@ -356,12 +356,23 @@
   (let [error (create-error "Unexpected indentation." :error)]
     (append-error ast error)))
 
-(defn append-blockquote-body->indent [ast lines lines-indent current-indent]
-  (let [raw-indent (+ lines-indent current-indent)
+(defn append-blockquote-body->indent [ast lines current-indent last-indent]
+  (let [raw-indent (+ current-indent last-indent)
         blockquote (create-blockquote raw-indent)
-        processed-blockquote (process-lines lines blockquote :body lines-indent)]
+        processed-blockquote (process-lines lines blockquote :body current-indent)]
     (-> ast
         (append-node processed-blockquote))))
+
+(defn append-bullet-list [ast style]
+  (let [bullet-list (create-bullet-list style)]
+    (-> ast
+        (append-node bullet-list)
+        move-to-latest-child)))
+
+(defn append-bullet-item [ast lines indent]
+  (let [bullet-item (create-bullet-item)
+        processed-bullet-item (process-lines lines bullet-item :body indent)]
+    (-> ast (append-node processed-bullet-item))))
 
 (def body->blank {:name :blank,
                   :state :body,
@@ -617,15 +628,15 @@
 (def body->indent {:name :indent,
                    :state :body,
                    :parse (fn [context [line indent-str text]]
-                            (let [indent (count indent-str)
-                                  current-ident (:indent context)
-                                  [lines next-context] (read-indented-lines context indent)
+                            (let [current-indent (count indent-str)
+                                  last-indent (:indent context)
+                                  [lines next-context] (read-indented-lines context current-indent)
                                   eof? (eof? next-context)]
                               (-> next-context
                                   (update-ast append-blockquote-body->indent
                                               lines
-                                              indent
-                                              current-ident)
+                                              current-indent
+                                              last-indent)
                                   (update-ast append-applicable-error-blockquote-no-end-blank-line
                                               lines
                                               eof?))))})
@@ -633,9 +644,18 @@
 ;;TODO: need to figure out the way to handle bullet-list state and indent
 (def body->bullet {:name :bullet,
                    :state :body,
-                   :parse (fn [context match]
-                            (-> context
-                                (push-state :bulletlist))
+                   :parse (fn [context [_ style spacing text]]
+                            (let [indent (inc (count spacing))
+                                  [lines next-context] (read-indented-lines
+                                                        (-> context
+                                                            (add-line-to-remains text)
+                                                            forward)
+                                                        indent)]
+                              (-> next-context
+                                  (update-ast append-bullet-list style)
+                                  (update-ast append-bullet-item lines indent)
+                                  clear-remains
+                                  (push-state :bullet)))
                             )})
 
 (def body->enum {:name :enum,
@@ -653,7 +673,7 @@
 (def states
   {:body           {:transitions [body->blank
                                   body->indent
-                                  ;;body->bullet
+                                  body->bullet
                                   ;;body->enum
                                   ;;body->field-marker
                                   ;;body->option-marker
@@ -665,7 +685,7 @@
                                   ;;body->anonymous
                                   body->line
                                   body->text]}
-   :bulletlist    {:transitions [bullet->blank
+   :bullet         {:transitions [bullet->blank
                                   ;;bullet->indent
                                   ;;bullet->bullet
                                   ;;bullet->enum
@@ -718,6 +738,28 @@
               (assoc n :children (vec children)))
             node))
 
+
+(defn single-paragraph-document? [ast]
+  (let [children (-> ast up-to-root z/children)]
+    (and (= (count children) 1)
+         (-> children first :type (= :paragraph)))))
+
+
+(defn unwrap-root-paragraph [ast]
+  (let [paragraph (-> ast up-to-root z/down)
+        children (z/children paragraph)]
+    (reduce (fn [t child]
+              (z/append-child t child))
+            (-> paragraph z/remove) children)))
+
+(defn unwrap-single-indented-document
+  "If the indented document contains a single paragraph
+  unwrap the paragraph content "
+  [context]
+  (if (and (indented? context) (-> context :ast single-paragraph-document?))
+    (update-ast context unwrap-root-paragraph)
+    context))
+
 (defn clean-up-remains [context]
   (if (remains? context)
     (let [current-state (current-state context)
@@ -735,7 +777,9 @@
               [transition match] (next-transition current-state line)
               new-context (parse context transition match)]
           (recur new-context))
-        (-> (clean-up-remains context)
+        (-> context
+            clean-up-remains
+            unwrap-single-indented-document
             :ast
             z/root)))))
 

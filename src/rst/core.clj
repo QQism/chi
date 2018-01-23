@@ -645,7 +645,6 @@
                                               lines
                                               eof?))))})
 
-;;TODO: need to figure out the way to handle bullet-list state and indent
 (def body->bullet {:name :bullet,
                    :state :body,
                    :parse (fn [context [_ style spacing text]]
@@ -694,25 +693,23 @@
 (def bullet->bullet {:name :bullet
                      :state :bullet
                      :parse (fn [context [_ style spacing text]]
-                              (do
-                                (println "Bullet->Bullet")
-                                (let [bullet-list (-> context :ast z/node)
-                                     indent (inc (count spacing))
-                                     [lines next-context] (read-indented-lines
-                                                           (-> context
-                                                               (add-line-to-remains text)
-                                                               forward)
-                                                           indent)]
-                                 (if (and (= (:type bullet-list) :bullet-list)
-                                          (= (:style bullet-list) style))
-                                   (-> next-context
-                                       (update-ast append-bullet-item lines indent)
-                                       clear-remains)
-                                   (-> next-context
-                                       (update-ast z/up)
-                                       (update-ast append-bullet-list style)
-                                       (update-ast append-bullet-item lines indent)
-                                       clear-remains)))))})
+                              (let [bullet-list (-> context :ast z/node)
+                                    indent (inc (count spacing))
+                                    [lines next-context] (read-indented-lines
+                                                          (-> context
+                                                              (add-line-to-remains text)
+                                                              forward)
+                                                          indent)]
+                                (if (and (= (:type bullet-list) :bullet-list)
+                                         (= (:style bullet-list) style))
+                                  (-> next-context
+                                      (update-ast append-bullet-item lines indent)
+                                      clear-remains)
+                                  (-> next-context
+                                      (update-ast z/up)
+                                      (update-ast append-bullet-list style)
+                                      (update-ast append-bullet-item lines indent)
+                                      clear-remains))))})
 
 (def states
   {:body           {:transitions [body->blank

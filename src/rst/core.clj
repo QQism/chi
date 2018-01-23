@@ -711,6 +711,19 @@
                                       (update-ast append-bullet-item lines indent)
                                       clear-remains))))})
 
+(def bullet->text {:name :text
+                   :state :bullet
+                   :parse (fn [context match]
+                            (let [lines (:lines context)
+                                  current-idx (:current-idx context)]
+                              (-> context
+                                  pop-state
+                                  (update-ast z/up)
+                                  (update-ast append-applicable-error-bullet-no-end-blank-line
+                                              lines
+                                              current-idx)
+                                  (parse body->text match))))})
+
 (def states
   {:body           {:transitions [body->blank
                                   body->indent
@@ -738,8 +751,8 @@
                                   ;;bullet->simple-table-top
                                   ;;bullet->explicit-markup
                                   ;;bullet->anonymous
-                                  body->line
-                                  body->text]}
+                                  ;;body->line
+                                  bullet->text]}
    :line           {:transitions [line->blank line->text line->line]}
    :text           {:transitions [text->blank
                                   ;;text->indent

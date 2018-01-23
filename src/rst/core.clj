@@ -411,7 +411,7 @@
   (let [paragraph (create-paragraph block-text)]
     (append-node ast paragraph)))
 
-(defn append-text [ast text]
+(defn anppend-text [ast text]
   (let [text (create-inline-markup-text text)]
     (append-node ast text)))
 
@@ -677,52 +677,58 @@
                     :parse (fn [context _]
                              (forward context))})
 
+(defn ^:private bullet->others [context match transition]
+  (let [lines (:lines context)
+        current-idx (:current-idx context)]
+    (-> context
+        pop-state
+        (update-ast z/up)
+        (update-ast append-applicable-error-bullet-no-end-blank-line
+                    lines
+                    current-idx)
+        (parse transition match))))
+
 (def bullet->indent {:name :indent
                      :state :bullet
                      :parse (fn [context match]
-                              (let [lines (:lines context)
-                                    current-idx (:current-idx context)]
-                                (-> context
-                                    pop-state
-                                    (update-ast z/up)
-                                    (update-ast append-applicable-error-bullet-no-end-blank-line
-                                                lines
-                                                current-idx)
-                                    (parse body->indent match))))})
+                              (bullet->others context match body->indent))})
+
+(def bullet->text {:name :text
+                   :state :bullet
+                   :parse (fn [context match]
+                            (bullet->others context match body->text))})
+
+(def bullet->line {:name :line
+                   :state :bullet
+                   :parse (fn [context match]
+                            (bullet->others context match body->line))})
 
 (def bullet->bullet {:name :bullet
                      :state :bullet
                      :parse (fn [context [_ style spacing text]]
                               (let [bullet-list (-> context :ast z/node)
                                     indent (inc (count spacing))
-                                    [lines next-context] (read-indented-lines
+                                    [indented-lines next-context] (read-indented-lines
                                                           (-> context
                                                               (add-line-to-remains text)
                                                               forward)
-                                                          indent)]
+                                                          indent)
+                                    lines (:lines context)
+                                    current-idx (:current-idx context)]
                                 (if (and (= (:type bullet-list) :bullet-list)
                                          (= (:style bullet-list) style))
                                   (-> next-context
-                                      (update-ast append-bullet-item lines indent)
+                                      (update-ast append-bullet-item indented-lines indent)
                                       clear-remains)
                                   (-> next-context
                                       (update-ast z/up)
+                                      (update-ast append-applicable-error-bullet-no-end-blank-line
+                                                  lines
+                                                  current-idx)
                                       (update-ast append-bullet-list style)
-                                      (update-ast append-bullet-item lines indent)
+                                      (update-ast append-bullet-item indented-lines indent)
                                       clear-remains))))})
 
-(def bullet->text {:name :text
-                   :state :bullet
-                   :parse (fn [context match]
-                            (let [lines (:lines context)
-                                  current-idx (:current-idx context)]
-                              (-> context
-                                  pop-state
-                                  (update-ast z/up)
-                                  (update-ast append-applicable-error-bullet-no-end-blank-line
-                                              lines
-                                              current-idx)
-                                  (parse body->text match))))})
 
 (def states
   {:body           {:transitions [body->blank
@@ -751,7 +757,7 @@
                                   ;;bullet->simple-table-top
                                   ;;bullet->explicit-markup
                                   ;;bullet->anonymous
-                                  ;;body->line
+                                  bullet->line
                                   bullet->text]}
    :line           {:transitions [line->blank line->text line->line]}
    :text           {:transitions [text->blank

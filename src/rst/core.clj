@@ -18,9 +18,7 @@
   (next-line [_])
   (forward [_])
   (eof? [_])
-  (not-eof? [_])
   (eof-on-next? [_])
-  (not-eof-on-next? [_])
   (indented? [_]))
 
 (defprotocol IStateManagement
@@ -39,9 +37,7 @@
   (next-line [_] (nth lines (inc current-idx)))
   (forward [_] (update _ :current-idx inc))
   (eof? [_] (>= current-idx (count lines)))
-  (not-eof? [_] (not (eof? _)))
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
-  (not-eof-on-next? [_] (not (eof-on-next? _)))
   (indented? [_] (> indent 0))
   IStateManagement
   (push-state [_ state] (update _ :states conj state))
@@ -347,7 +343,7 @@
         (append-transition transition))))
 
 (defn append-applicable-error-blockquote-no-end-blank-line [ast lines eof?]
-  (if (not (or (match-transition? :blank (peek lines)) eof?))
+  (if-not (or (match-transition? :blank (peek lines)) eof?)
     (let [error (create-error "Block quote ends without a blank line; unexpected unindent." :warning)]
       (append-error ast error))
     ast))
@@ -419,9 +415,9 @@
   {:name :text,
    :state :body,
    :parse (fn [context _]
-            (if (not-eof? context)
+            (if-not (eof? context)
               (let [line (current-line context)]
-                (if (not-eof-on-next? context)
+                (if-not (eof-on-next? context)
                   (-> context
                       forward
                       (add-line-to-remains line)
@@ -448,7 +444,7 @@
                                    clear-remains
                                    pop-state)
                                (loop [current-context context]
-                                 (if (not-eof? current-context)
+                                 (if-not (eof? current-context)
                                    (let [line (current-line current-context)]
                                      (if (match-transition? :blank line)
                                        (recur (-> current-context forward))
@@ -480,7 +476,7 @@
                                 current-text-lines (conj text-lines current-text-line)
                                 prev-text-line (peek text-lines)
                                 prev-short-line? (< (count prev-text-line) 4)]
-                            (if (not-eof-on-next? context)
+                            (if-not (eof-on-next? context)
                               (let [next-text-line (next-line context)
                                     next-text-lines (conj current-text-lines next-text-line)]
                                 (if (match-transition? :line next-text-line)
@@ -554,7 +550,7 @@
                           ;; Read the whole block of text until the blank line
                           ;; keep track the index
                           (loop [current-context context]
-                            (if (not-eof? current-context)
+                            (if-not (eof? current-context)
                               (let [line (current-line current-context)]
                                 (cond (match-transition? :blank line)
                                       ;; blank line, create paragraph & return
@@ -616,7 +612,7 @@
         indented-pattern (re-pattern (str " {" indent "}(.*)"))]
     (loop [indented-lines text-lines
            current-context context]
-      (if (not-eof? current-context)
+      (if-not (eof? current-context)
         (let [line (current-line current-context)]
           (if-let [match (re-matches indented-pattern line)]
             (recur (conj indented-lines (nth match 1)) (forward current-context))
@@ -831,7 +827,7 @@
   (let [init-ast (zip-node node)
         init-context (make-context lines init-ast init-state indent)]
     (loop [context init-context]
-      (if (not-eof? context)
+      (if-not (eof? context)
         (let [line (current-line context)
               current-state (current-state context)
               [transition match] (next-transition current-state line)

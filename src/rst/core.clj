@@ -25,13 +25,13 @@
   (push-state [_ state])
   (pop-state [_])
   (current-state [_])
-  (add-line-to-remains [_ line])
-  (update-remains [_ lines])
-  (clear-remains [_])
-  (remains? [_]))
+  (add-to-buffers [_ line])
+  (update-buffers [_ lines])
+  (clear-buffers [_])
+  (buffers? [_]))
 
 (defrecord DocumentContext
-    [ast lines current-idx states pos remains reported-level]
+    [ast lines current-idx states pos buffers reported-level]
   IReadingLines
   (current-line [_] (nth lines current-idx))
   (next-line [_] (nth lines (inc current-idx)))
@@ -45,10 +45,10 @@
   (push-state [_ state] (update _ :states conj state))
   (pop-state [_] (update _ :states pop))
   (current-state [_] (-> _ :states peek))
-  (add-line-to-remains [_ line] (update _ :remains conj line))
-  (update-remains [_ lines] (assoc _ :remains lines))
-  (clear-remains [_] (update-remains _ []))
-  (remains? [_] (-> _ :remains empty? not)))
+  (add-to-buffers [_ line] (update _ :buffers conj line))
+  (update-buffers [_ lines] (assoc _ :buffers lines))
+  (clear-buffers [_] (update-buffers _ []))
+  (buffers? [_] (-> _ :buffers empty? not)))
 
 (defn make-context
   [lines ast init-state init-pos]
@@ -57,7 +57,7 @@
                          :pos init-pos
                          :current-idx 0
                          :states [init-state]
-                         :remains []
+                         :buffers []
                          :reported-level (:info error-levels)}))
 
 (defn update-ast [context f & args]
@@ -411,14 +411,14 @@
                               (if short-line?
                                 (-> context
                                     forward
-                                    (add-line-to-remains line)
+                                    (add-to-buffers line)
                                     (push-state :text))
                                 (-> context
                                     (update-ast append-error-unexpected-section-title-or-transition pos [line])
                                     forward))
                               (-> context
                                   forward
-                                  (add-line-to-remains line)
+                                  (add-to-buffers line)
                                   (push-state :line)))))})
 
 (defn append-paragraph [ast block-text]
@@ -438,14 +438,14 @@
                 (if-not (eof-on-next? context)
                   (-> context
                       forward
-                      (add-line-to-remains line)
+                      (add-to-buffers line)
                       (push-state :text))
                   ;; next line if EOF
-                  (let [text-lines (-> context :remains (conj line))]
+                  (let [text-lines (-> context :buffers (conj line))]
                     (-> context
                         (update-ast append-paragraph (string/join " " text-lines))
                         forward
-                        clear-remains))))))})
+                        clear-buffers))))))})
 
 (def line->blank {:name :blank
                   :state :line
@@ -453,15 +453,15 @@
                            ;; Check if it is the last line of the document
                            ;; - Y: Raise error
                            ;; - N: Create a transition
-                           (let [{[row col] :pos remains :remains} context
-                                 prev-text-line (peek remains)
+                           (let [{[row col] :pos buffers :buffers} context
+                                 prev-text-line (peek buffers)
                                  prev-short-line? (< (count prev-text-line) 4)
                                  prev-pos [(dec row) col]]
                              (if prev-short-line?
                                (-> context
                                    (update-ast append-paragraph prev-text-line)
                                    forward
-                                   clear-remains
+                                   clear-buffers
                                    pop-state)
                                (loop [current-context context]
                                  (if-not (eof? current-context)
@@ -470,12 +470,12 @@
                                        (recur (-> current-context forward))
                                        (-> current-context
                                            (update-ast append-transition-line->blank prev-pos)
-                                           clear-remains
+                                           clear-buffers
                                            pop-state)))
                                    (-> current-context
                                        (update-ast append-transition-line->blank prev-pos)
                                        (update-ast append-error-doc-end-with-transition prev-pos)
-                                       clear-remains
+                                       clear-buffers
                                        pop-state))))))})
 
 (def line->text {:name :text,
@@ -491,7 +491,7 @@
                           ;; - N: - If it is a short line
                           ;;   - Y: Switch to the text state
                           ;;   - N: Create an error
-                          (let [{text-lines :remains [row col] :pos} context
+                          (let [{text-lines :buffers [row col] :pos} context
                                 prev-pos [(dec row) col]
                                 current-text-line (current-line context)
                                 current-text-lines (conj text-lines current-text-line)
@@ -506,13 +506,13 @@
                                         (update-ast append-section-line->text-line prev-pos next-text-lines)
                                         forward
                                         forward
-                                        clear-remains
+                                        clear-buffers
                                         pop-state)
                                     (if prev-short-line?
                                       (-> context
                                           forward
                                           forward
-                                          (update-remains next-text-lines)
+                                          (update-buffers next-text-lines)
                                           pop-state
                                           (push-state :text))
                                       (-> context
@@ -521,13 +521,13 @@
                                                       next-text-lines)
                                           forward
                                           forward
-                                          clear-remains
+                                          clear-buffers
                                           pop-state)))
                                   (if prev-short-line?
                                     (-> context
                                         forward
                                         forward
-                                        (update-remains next-text-lines)
+                                        (update-buffers next-text-lines)
                                         pop-state
                                         (push-state :text))
                                     (-> context
@@ -536,12 +536,12 @@
                                                     next-text-lines)
                                         forward
                                         forward
-                                        clear-remains
+                                        clear-buffers
                                         pop-state))))
                               (if prev-short-line?
                                 (-> context
                                     forward
-                                    (add-line-to-remains current-text-line)
+                                    (add-to-buffers current-text-line)
                                     pop-state
                                     (push-state :text))
                                 (-> context
@@ -549,7 +549,7 @@
                                                 prev-pos
                                                 current-text-lines)
                                     forward
-                                    clear-remains
+                                    clear-buffers
                                     pop-state)))))})
 
 (def line->line {:name :line,
@@ -561,12 +561,12 @@
 (def text->blank {:name :blank,
                   :state :text,
                   :parse (fn [context _]
-                           (let [text-lines (:remains context)
+                           (let [text-lines (:buffers context)
                                  block-text (string/join " " text-lines)]
                              (-> context
                                  (update-ast append-paragraph block-text)
                                  forward
-                                 clear-remains
+                                 clear-buffers
                                  pop-state)))})
 
 (def text->text {:name :text,
@@ -579,43 +579,43 @@
                               (let [line (current-line current-context)]
                                 (cond (match-transition? :blank line)
                                       ;; blank line, create paragraph & return
-                                      (let [block-text (string/join " " (:remains current-context))]
+                                      (let [block-text (string/join " " (:buffers current-context))]
                                         (-> current-context
                                             (update-ast append-paragraph block-text)
-                                            clear-remains
+                                            clear-buffers
                                             pop-state))
                                       (match-transition? :indent line)
-                                      (let [block-text (string/join " " (:remains current-context))
+                                      (let [block-text (string/join " " (:buffers current-context))
                                             pos (:pos current-context)]
                                         (-> current-context
                                             (update-ast append-paragraph block-text)
                                             (update-ast append-error-unexpected-indentation pos)
-                                            clear-remains
+                                            clear-buffers
                                             pop-state))
                                       :else
                                       (recur (-> current-context
                                                  forward
-                                                 (add-line-to-remains line)))))
+                                                 (add-to-buffers line)))))
                               ;; EOF, create paragraph & return
-                              (let [block-text (string/join " " (:remains current-context))]
+                              (let [block-text (string/join " " (:buffers current-context))]
                                 (-> current-context
                                     (update-ast append-paragraph block-text)
                                     forward
-                                    clear-remains
+                                    clear-buffers
                                     pop-state)))))})
 
 (def text->line {:name :line,
                  :state :text,
                  :parse (fn [context match]
-                          (let [{pos :pos remains :remains} context
-                                prev-text-line (peek remains)
+                          (let [{pos :pos buffers :buffers} context
+                                prev-text-line (peek buffers)
                                 line (current-line context)
                                 line-count (count line)
                                 short-line? (< line-count 4)
                                 shorter-than-prev? (< line-count (count prev-text-line))
                                 text-lines [prev-text-line line]]
                             ;; There are two possible cases:
-                            ;; - line is shorter than the text (in remains)
+                            ;; - line is shorter than the text (in buffers)
                             ;;     AND line is shorter than 4 characters
                             ;;     | switch to transition text->text
                             ;;   - else
@@ -626,16 +626,16 @@
                                 (-> context
                                     (update-ast append-error-unexpected-section-title pos text-lines)
                                     forward
-                                    clear-remains
+                                    clear-buffers
                                     pop-state)
                                 (-> context
                                     (update-ast append-section-text->line pos text-lines)
                                     forward
-                                    clear-remains
+                                    clear-buffers
                                     pop-state)))))})
 
 (defn read-indented-lines [context indent]
-  (let [{text-lines :remains} context
+  (let [{text-lines :buffers} context
         indented-pattern (re-pattern (str " {" indent "}(.*)"))]
     (loop [indented-lines text-lines
            current-context context]
@@ -647,10 +647,10 @@
               (recur (conj indented-lines "") (forward current-context))
               [indented-lines
                (-> current-context
-                   clear-remains)])))
+                   clear-buffers)])))
         [indented-lines
          (-> current-context
-             clear-remains)]))))
+             clear-buffers)]))))
 
 (def body->indent {:name :indent,
                    :state :body,
@@ -677,13 +677,13 @@
                                   pos (:pos context)
                                   [lines next-context] (read-indented-lines
                                                         (-> context
-                                                            (add-line-to-remains text)
+                                                            (add-to-buffers text)
                                                             forward)
                                                         indent)]
                               (-> next-context
                                   (update-ast append-bullet-list style)
                                   (update-ast append-bullet-item lines indent pos)
-                                  clear-remains
+                                  clear-buffers
                                   (push-state :bullet))))})
 
 (def body->enum {:name :enum,
@@ -737,7 +737,7 @@
                                     indent (inc (count spacing))
                                     [indented-lines next-context] (read-indented-lines
                                                                    (-> context
-                                                                       (add-line-to-remains text)
+                                                                       (add-to-buffers text)
                                                                        forward)
                                                                    indent)
                                     {lines :lines idx :current-idx pos :pos} context]
@@ -745,7 +745,7 @@
                                          (= (:style bullet-list) style))
                                   (-> next-context
                                       (update-ast append-bullet-item indented-lines indent pos)
-                                      clear-remains)
+                                      clear-buffers)
                                   (-> next-context
                                       (update-ast z/up)
                                       (update-ast append-applicable-error-bullet-no-end-blank-line
@@ -754,7 +754,7 @@
                                                   lines)
                                       (update-ast append-bullet-list style)
                                       (update-ast append-bullet-item indented-lines indent pos)
-                                      clear-remains))))})
+                                      clear-buffers))))})
 
 
 (def states
@@ -847,8 +847,8 @@
     (update-ast context unwrap-root-paragraph)
     context))
 
-(defn clean-up-remains [context]
-  (if (remains? context)
+(defn clean-up-buffers [context]
+  (if (buffers? context)
     (let [current-state (current-state context)
           [transition match] (next-transition current-state "")]
       (parse context transition match))
@@ -865,7 +865,7 @@
               new-context (parse context transition match)]
           (recur new-context))
         (-> context
-            clean-up-remains
+            clean-up-buffers
             unwrap-single-indented-document
             :ast
             z/root)))))

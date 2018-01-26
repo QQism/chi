@@ -101,6 +101,7 @@
           error => (contains
                     {:type :error
                      :level 2
+                     :pos [2 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -226,6 +227,7 @@
           error => (contains
                     {:type :error
                      :level 2
+                     :pos [3 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -272,6 +274,7 @@
           error => (contains
                     {:type :error
                      :level 2
+                     :pos [3 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -351,6 +354,7 @@
           error-1 => (contains
                     {:type :error
                      :level 2
+                     :pos [3 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -360,14 +364,16 @@
                                                  :value "Bullet list ends without a blank line; unexpected unindent."})])})])})
           transition => (contains {:type :transition})
           error-2 => (contains
-                    {:type :error
-                     :children (just
-                                [(contains
-                                  {:type :paragraph
-                                   :children (just
-                                              [(contains
-                                                {:type :text
-                                                 :value "Document may not end with a transition."})])})])}))))
+                      {:type :error
+                       :level 3
+                       :pos [3 1]
+                       :children (just
+                                  [(contains
+                                    {:type :paragraph
+                                     :children (just
+                                                [(contains
+                                                  {:type :text
+                                                   :value "Document may not end with a transition."})])})])}))))
 
 (fact "A simple bullet list and a line with a blank line between"
       (let [lines ["- First item"
@@ -398,6 +404,8 @@
           transition => (contains {:type :transition})
           error => (contains
                     {:type :error
+                     :level 3
+                     :pos [4 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph

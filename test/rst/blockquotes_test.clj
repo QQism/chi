@@ -79,6 +79,7 @@
           error => (contains
                     {:type :error
                      :level 2
+                     :pos [5 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -113,6 +114,7 @@
           error => (contains
                     {:type :error
                      :level 3
+                     :pos [3 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -187,6 +189,7 @@
             error => (contains
                       {:type :error
                        :level 4
+                       :pos [4 3]
                        :children (just
                                   [(contains
                                     {:type :paragraph
@@ -274,6 +277,7 @@
             error => (contains
                       {:type :error
                        :level 4
+                       :pos [5 3]
                        :children (just
                                   [(contains
                                     {:type :paragraph

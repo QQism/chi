@@ -73,6 +73,7 @@
           transition => (contains {:type :transition})
           error => (contains
                     {:type :error
+                     :pos [4 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -114,6 +115,7 @@
           error => (contains
                     {:type :error
                      :level 3
+                     :pos [1 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -144,6 +146,7 @@
           error => (contains
                     {:type :error
                      :level 3
+                     :pos [4 1]
                      :children (just
                                 [(contains
                                   {:type :paragraph
@@ -175,6 +178,7 @@
           transition-1 => (contains {:type :transition})
           error => (contains
                     {:type :error
+                     :pos [5 1]
                      :level 3
                      :children (just
                                 [(contains

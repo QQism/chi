@@ -5,7 +5,7 @@
              [clojure.zip :as z]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
-(defn ^:declared process-lines [lines node init-state indent])
+(defn ^:declared process-lines [lines node pos])
 
 (def error-levels {:debug    0
                    :info     1
@@ -31,14 +31,16 @@
   (remains? [_]))
 
 (defrecord DocumentContext
-    [ast lines current-idx states indent remains reported-level]
+    [ast lines current-idx states pos remains reported-level]
   IReadingLines
   (current-line [_] (nth lines current-idx))
   (next-line [_] (nth lines (inc current-idx)))
-  (forward [_] (update _ :current-idx inc))
+  (forward [context] (-> context
+                         (update :current-idx inc)
+                         (update :pos (fn [[row col]] [(inc row) col]))))
   (eof? [_] (>= current-idx (count lines)))
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
-  (indented? [_] (> indent 0))
+  (indented? [_] (> (peek pos) 0))
   IStateManagement
   (push-state [_ state] (update _ :states conj state))
   (pop-state [_] (update _ :states pop))
@@ -48,10 +50,11 @@
   (clear-remains [_] (update-remains _ []))
   (remains? [_] (-> _ :remains empty? not)))
 
-(defn make-context [lines ast init-state indent]
+(defn make-context
+  [lines ast init-state init-pos]
   (map->DocumentContext {:ast ast
                          :lines lines
-                         :indent indent
+                         :pos init-pos
                          :current-idx 0
                          :states [init-state]
                          :remains []
@@ -94,14 +97,16 @@
 
 (def patterns
   {:blank   #" *$"
-   :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
    :indent  #"(\s+)(.+)"
+   :grid-table-top #"\+-[-\+]+-\+ *$"
    :bullet  #"([-+*\u2022\u2023\u2043])(\s+)(.*|$)"
+   :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
    :text    #".+"})
 
 (re-matches (:indent patterns) " This Hello")
 (re-matches (:line patterns) "***")
 (re-matches (:bullet patterns) "* Item")
+(re-matches (:grid-table-top patterns) "+--+------+")
 
 ;;(let [[_ style spacing text] (re-matches (:bullet patterns) "*   Hello")
 ;;      indent (inc (count spacing))]
@@ -129,8 +134,8 @@
   (-> (match-transition transition-name line)
       nil? not))
 
-(defn create-node [m]
-  (merge {:iid (get-iid)} m))
+(defn create-node [n]
+  (merge {:iid (get-iid)} n))
 
 (defn create-preserve [text]
   (create-node {:type :preserve :value text}))
@@ -161,15 +166,17 @@
   (create-node {:type :transition}))
 
 (defn create-error
-  ([description level block-text]
+  ([description level pos]
    (create-node {:type :error
                  :level (level error-levels)
+                 :pos (->> pos (map inc) vec)
+                 :children [(create-paragraph description)]}))
+  ([description level pos block-text]
+   (create-node {:type :error
+                 :level (level error-levels)
+                 :pos (->> pos (map inc) vec)
                  :children [(create-paragraph description)
-                            (create-preserve block-text)]}))
-  ([description level]
-   (create-node {:type :error
-                 :level (level error-levels)
-                 :children [(create-paragraph description)]})))
+                            (create-preserve block-text)]})))
 
 (defn create-blockquote [indent]
   (create-node {:type :blockquote
@@ -181,8 +188,9 @@
                 :style style
                 :children []}))
 
-(defn create-bullet-item []
+(defn create-bullet-item [indent]
   (create-node {:type :bullet-item
+                :indent indent
                 :children []}))
 
 (defn append-node [ast node]
@@ -236,41 +244,40 @@
       (append-section matched-parent-section section)
       (append-section ast section))))
 
-(defn append-error-section-title-too-short [ast style text-lines]
+(defn append-error-section-title-too-short [ast pos style text-lines]
   (let [block-text (string/join "\r\n" text-lines)
-        error (create-error (str "Title " style " too short.")
-                            :warning
-                            block-text)]
+        msg (str "Title " style " too short.")
+        error (create-error msg :warning pos block-text)]
     (append-error ast error)))
 
-(defn append-error-section-mismatching-underline [ast text-lines]
+(defn append-error-section-mismatching-underline [ast pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
-        error (create-error "Missing matching underline for section title overline."
-                            :severe block-text)]
+        msg "Missing matching underline for section title overline."
+        error (create-error msg :severe pos block-text)]
     (append-error ast error)))
 
-(defn append-error-section-mismatching-overline-underline [ast text-lines]
+(defn append-error-section-mismatching-overline-underline [ast pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
-        error (create-error "Title overline & underline mismatch."
-                            :severe block-text)]
+        msg "Title overline & underline mismatch."
+        error (create-error msg :severe pos block-text)]
     (append-error ast error)))
 
-(defn append-error-incomplete-section-title [ast text-lines]
+(defn append-error-incomplete-section-title [ast pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
-        error (create-error "Incomplete section title."
-                            :severe block-text)]
+        msg "Incomplete section title."
+        error (create-error msg :severe pos block-text)]
     (append-error ast error)))
 
-(defn append-error-unexpected-section-title [ast text-lines]
+(defn append-error-unexpected-section-title [ast pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
-        error (create-error "Unexpected section title."
-                            :severe block-text)]
+        msg "Unexpected section title."
+        error (create-error msg :severe pos block-text)]
     (append-error ast error)))
 
-(defn append-error-unexpected-section-title-or-transition [ast text-lines]
+(defn append-error-unexpected-section-title-or-transition [ast pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
-        error (create-error "Unexpected section title or transition."
-                            :severe block-text)]
+        msg "Unexpected section title or transition."
+        error (create-error msg :severe pos block-text)]
     (append-error ast error)))
 
 (defn is-section-title-short? [style text-lines]
@@ -283,26 +290,28 @@
       (< (count overline) (count text)))
     false))
 
-(defn append-applicable-error-section-title-too-short [ast style text-lines]
+(defn append-applicable-error-section-title-too-short [ast pos style text-lines]
   (if (is-section-title-short? style text-lines)
-    (append-error-section-title-too-short ast style text-lines)
+    (append-error-section-title-too-short ast pos style text-lines)
     ast))
 
-(defn append-section-line->text-line [ast text-lines]
+(defn append-section-line->text-line [ast pos text-lines]
   (let [[overline text _] text-lines
         section-style "overline"
         new-section (create-section text overline section-style)]
     (-> ast (append-section-in-matched-location new-section)
-        (append-applicable-error-section-title-too-short section-style
+        (append-applicable-error-section-title-too-short pos
+                                                         section-style
                                                          text-lines))))
 
-(defn append-section-text->line [ast text-lines]
+(defn append-section-text->line [ast pos text-lines]
   (let [[text underline] text-lines
         section-style "underline"
         new-section (create-section text underline section-style)]
     (-> ast
         (append-section-in-matched-location new-section)
-        (append-applicable-error-section-title-too-short section-style
+        (append-applicable-error-section-title-too-short pos
+                                                         section-style
                                                          text-lines))))
 
 
@@ -316,55 +325,60 @@
 (defn last-sibling-transition? [ast]
   (-> ast z/down z/rightmost z/node :type (= :transition)))
 
-(defn append-applicable-error-doc-start-with-transition [ast]
+(defn append-applicable-error-doc-start-with-transition [ast pos]
   (if (document-begin? ast)
-    (let [error (create-error "Document or section may not begin with a transition."
-                              :error)]
+    (let [msg "Document or section may not begin with a transition."
+          error (create-error msg :error pos)]
       (append-error ast error))
     ast))
 
-(defn append-applicable-error-adjacent-transitions [ast]
+(defn append-applicable-error-adjacent-transitions [ast pos]
   (if (last-sibling-transition? ast)
-    (let [error (create-error "At least one body element must separate transitions; adjacent transitions are not allowed."
-                              :error)]
+    (let [msg "At least one body element must separate transitions; adjacent transitions are not allowed."
+          error (create-error msg :error pos)]
       (append-error ast error))
     ast))
 
-(defn append-error-doc-end-with-transition [ast]
-  (let [error (create-error "Document may not end with a transition."
-                            :error)]
+(defn append-error-doc-end-with-transition [ast pos]
+  (let [msg "Document may not end with a transition."
+        error (create-error msg :error pos)]
     (append-error ast error)))
 
-(defn append-transition-line->blank [ast]
+(defn append-transition-line->blank [ast pos]
   (let [transition (create-transition)]
     (-> ast
-        append-applicable-error-doc-start-with-transition
-        append-applicable-error-adjacent-transitions
+        (append-applicable-error-doc-start-with-transition pos)
+        (append-applicable-error-adjacent-transitions pos)
         (append-transition transition))))
 
-(defn append-applicable-error-blockquote-no-end-blank-line [ast lines eof?]
+(defn append-applicable-error-blockquote-no-end-blank-line [ast pos lines eof?]
   (if-not (or (match-transition? :blank (peek lines)) eof?)
-    (let [error (create-error "Block quote ends without a blank line; unexpected unindent." :warning)]
+    (let [msg "Block quote ends without a blank line; unexpected unindent."
+          error (create-error msg :warning pos)]
       (append-error ast error))
     ast))
 
-(defn append-applicable-error-bullet-no-end-blank-line [ast lines current-idx]
-  (if (> current-idx 0)
-    (let [prev-line (nth lines (dec current-idx))]
+(defn append-applicable-error-bullet-no-end-blank-line [ast pos idx lines]
+  (if (> idx 0)
+    (let [prev-line (nth lines (dec idx))]
       (if (match-transition? :blank prev-line)
         ast
-        (let [error (create-error "Bullet list ends without a blank line; unexpected unindent." :warning)]
+        (let [msg "Bullet list ends without a blank line; unexpected unindent."
+              error (create-error msg :warning pos)]
           (append-error ast error))))
     ast))
 
-(defn append-error-unexpected-indentation [ast]
-  (let [error (create-error "Unexpected indentation." :error)]
+(defn append-error-unexpected-indentation [ast pos]
+  (let [msg "Unexpected indentation."
+        error (create-error msg :error pos)]
     (append-error ast error)))
 
-(defn append-blockquote-body->indent [ast lines current-indent last-indent]
-  (let [raw-indent (+ current-indent last-indent)
+(defn append-blockquote-body->indent [ast lines indent pos]
+  (let [[row col] pos
+        raw-indent (+ indent col)
         blockquote (create-blockquote raw-indent)
-        processed-blockquote (process-lines lines blockquote :body current-indent)]
+        new-pos [row raw-indent]
+        processed-blockquote (process-lines lines blockquote new-pos)]
     (-> ast
         (append-node processed-blockquote))))
 
@@ -374,9 +388,12 @@
         (append-node bullet-list)
         move-to-latest-child)))
 
-(defn append-bullet-item [ast lines indent]
-  (let [bullet-item (create-bullet-item)
-        processed-bullet-item (process-lines lines bullet-item :body indent)]
+(defn append-bullet-item [ast lines indent pos]
+  (let [[row col] pos
+        raw-indent (+ col indent)
+        bullet-item (create-bullet-item raw-indent)
+        new-pos [row raw-indent]
+        processed-bullet-item (process-lines lines bullet-item new-pos)]
     (-> ast (append-node processed-bullet-item))))
 
 (def body->blank {:name :blank,
@@ -388,6 +405,7 @@
                  :state :body,
                  :parse (fn [context _]
                           (let [line (current-line context)
+                                pos (:pos context)
                                 short-line? (< (count line) 4)]
                             (if (indented? context)
                               (if short-line?
@@ -396,7 +414,7 @@
                                     (add-line-to-remains line)
                                     (push-state :text))
                                 (-> context
-                                    (update-ast append-error-unexpected-section-title-or-transition [line])
+                                    (update-ast append-error-unexpected-section-title-or-transition pos [line])
                                     forward))
                               (-> context
                                   forward
@@ -435,8 +453,10 @@
                            ;; Check if it is the last line of the document
                            ;; - Y: Raise error
                            ;; - N: Create a transition
-                           (let [prev-text-line (-> context :remains peek)
-                                 prev-short-line? (< (count prev-text-line) 4)]
+                           (let [{[row col] :pos remains :remains} context
+                                 prev-text-line (peek remains)
+                                 prev-short-line? (< (count prev-text-line) 4)
+                                 prev-pos [(dec row) col]]
                              (if prev-short-line?
                                (-> context
                                    (update-ast append-paragraph prev-text-line)
@@ -449,12 +469,12 @@
                                      (if (match-transition? :blank line)
                                        (recur (-> current-context forward))
                                        (-> current-context
-                                           (update-ast append-transition-line->blank)
+                                           (update-ast append-transition-line->blank prev-pos)
                                            clear-remains
                                            pop-state)))
                                    (-> current-context
-                                       (update-ast append-transition-line->blank)
-                                       (update-ast append-error-doc-end-with-transition)
+                                       (update-ast append-transition-line->blank prev-pos)
+                                       (update-ast append-error-doc-end-with-transition prev-pos)
                                        clear-remains
                                        pop-state))))))})
 
@@ -471,7 +491,8 @@
                           ;; - N: - If it is a short line
                           ;;   - Y: Switch to the text state
                           ;;   - N: Create an error
-                          (let [{text-lines :remains} context
+                          (let [{text-lines :remains [row col] :pos} context
+                                prev-pos [(dec row) col]
                                 current-text-line (current-line context)
                                 current-text-lines (conj text-lines current-text-line)
                                 prev-text-line (peek text-lines)
@@ -482,7 +503,7 @@
                                 (if (match-transition? :line next-text-line)
                                   (if (= prev-text-line next-text-line)
                                     (-> context
-                                        (update-ast append-section-line->text-line next-text-lines)
+                                        (update-ast append-section-line->text-line prev-pos next-text-lines)
                                         forward
                                         forward
                                         clear-remains
@@ -496,6 +517,7 @@
                                           (push-state :text))
                                       (-> context
                                           (update-ast append-error-section-mismatching-overline-underline
+                                                      prev-pos
                                                       next-text-lines)
                                           forward
                                           forward
@@ -510,6 +532,7 @@
                                         (push-state :text))
                                     (-> context
                                         (update-ast append-error-section-mismatching-underline
+                                                    prev-pos
                                                     next-text-lines)
                                         forward
                                         forward
@@ -522,7 +545,9 @@
                                     pop-state
                                     (push-state :text))
                                 (-> context
-                                    (update-ast append-error-incomplete-section-title current-text-lines)
+                                    (update-ast append-error-incomplete-section-title
+                                                prev-pos
+                                                current-text-lines)
                                     forward
                                     clear-remains
                                     pop-state)))))})
@@ -560,10 +585,11 @@
                                             clear-remains
                                             pop-state))
                                       (match-transition? :indent line)
-                                      (let [block-text (string/join " " (:remains current-context))]
-                                        (-> current-context 
+                                      (let [block-text (string/join " " (:remains current-context))
+                                            pos (:pos current-context)]
+                                        (-> current-context
                                             (update-ast append-paragraph block-text)
-                                            (update-ast append-error-unexpected-indentation)
+                                            (update-ast append-error-unexpected-indentation pos)
                                             clear-remains
                                             pop-state))
                                       :else
@@ -581,7 +607,8 @@
 (def text->line {:name :line,
                  :state :text,
                  :parse (fn [context match]
-                          (let [prev-text-line (-> context :remains peek)
+                          (let [{pos :pos remains :remains} context
+                                prev-text-line (peek remains)
                                 line (current-line context)
                                 line-count (count line)
                                 short-line? (< line-count 4)
@@ -597,12 +624,12 @@
                               (parse context text->text match)
                               (if (indented? context)
                                 (-> context
-                                    (update-ast append-error-unexpected-section-title text-lines)
+                                    (update-ast append-error-unexpected-section-title pos text-lines)
                                     forward
                                     clear-remains
                                     pop-state)
                                 (-> context
-                                    (update-ast append-section-text->line text-lines)
+                                    (update-ast append-section-text->line pos text-lines)
                                     forward
                                     clear-remains
                                     pop-state)))))})
@@ -629,15 +656,17 @@
                    :state :body,
                    :parse (fn [context [line indent-str text]]
                             (let [current-indent (count indent-str)
-                                  last-indent (:indent context)
+                                  pos (:pos context)
                                   [lines next-context] (read-indented-lines context current-indent)
-                                  eof? (eof? next-context)]
+                                  eof? (eof? next-context)
+                                  next-pos (:pos next-context)]
                               (-> next-context
                                   (update-ast append-blockquote-body->indent
                                               lines
                                               current-indent
-                                              last-indent)
+                                              pos)
                                   (update-ast append-applicable-error-blockquote-no-end-blank-line
+                                              next-pos
                                               lines
                                               eof?))))})
 
@@ -645,6 +674,7 @@
                    :state :body,
                    :parse (fn [context [_ style spacing text]]
                             (let [indent (inc (count spacing))
+                                  pos (:pos context)
                                   [lines next-context] (read-indented-lines
                                                         (-> context
                                                             (add-line-to-remains text)
@@ -652,7 +682,7 @@
                                                         indent)]
                               (-> next-context
                                   (update-ast append-bullet-list style)
-                                  (update-ast append-bullet-item lines indent)
+                                  (update-ast append-bullet-item lines indent pos)
                                   clear-remains
                                   (push-state :bullet))))})
 
@@ -675,13 +705,14 @@
 
 (defn ^:private bullet->others [context match transition]
   (let [lines (:lines context)
-        current-idx (:current-idx context)]
+        {current-idx :current-idx pos :pos} context]
     (-> context
         pop-state
         (update-ast z/up)
         (update-ast append-applicable-error-bullet-no-end-blank-line
-                    lines
-                    current-idx)
+                    pos
+                    current-idx
+                    lines)
         (parse transition match))))
 
 (def bullet->indent {:name :indent
@@ -705,24 +736,24 @@
                               (let [bullet-list (-> context :ast z/node)
                                     indent (inc (count spacing))
                                     [indented-lines next-context] (read-indented-lines
-                                                          (-> context
-                                                              (add-line-to-remains text)
-                                                              forward)
-                                                          indent)
-                                    lines (:lines context)
-                                    current-idx (:current-idx context)]
+                                                                   (-> context
+                                                                       (add-line-to-remains text)
+                                                                       forward)
+                                                                   indent)
+                                    {lines :lines idx :current-idx pos :pos} context]
                                 (if (and (= (:type bullet-list) :bullet-list)
                                          (= (:style bullet-list) style))
                                   (-> next-context
-                                      (update-ast append-bullet-item indented-lines indent)
+                                      (update-ast append-bullet-item indented-lines indent pos)
                                       clear-remains)
                                   (-> next-context
                                       (update-ast z/up)
                                       (update-ast append-applicable-error-bullet-no-end-blank-line
-                                                  lines
-                                                  current-idx)
+                                                  pos
+                                                  idx
+                                                  lines)
                                       (update-ast append-bullet-list style)
-                                      (update-ast append-bullet-item indented-lines indent)
+                                      (update-ast append-bullet-item indented-lines indent pos)
                                       clear-remains))))})
 
 
@@ -823,9 +854,9 @@
       (parse context transition match))
     context))
 
-(defn process-lines [lines node init-state indent]
+(defn process-lines [lines node pos]
   (let [init-ast (zip-node node)
-        init-context (make-context lines init-ast init-state indent)]
+        init-context (make-context lines init-ast :body pos)]
     (loop [context init-context]
       (if-not (eof? context)
         (let [line (current-line context)
@@ -841,8 +872,7 @@
 
 (defn process-document [document-lines]
   (let [root-node {:type :root :iid (get-iid) :children []}
-        no-indent 0
-        init-state :body]
-    (process-lines document-lines root-node init-state no-indent)))
+        pos [0 0]]
+    (process-lines document-lines root-node pos)))
 
 ;;(process-document content-lines)

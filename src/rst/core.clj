@@ -645,21 +645,20 @@
             (recur (conj indented-lines (nth match 1)) (forward current-context))
             (if (match-transition? :blank line)
               (recur (conj indented-lines "") (forward current-context))
-              [indented-lines
-               (-> current-context
-                   clear-buffers)])))
-        [indented-lines
-         (-> current-context
-             clear-buffers)]))))
+              (-> current-context
+                  (update-buffers indented-lines)))))
+        (-> current-context
+            (update-buffers indented-lines))))))
 
 (def body->indent {:name :indent,
                    :state :body,
                    :parse (fn [context [line indent-str text]]
                             (let [current-indent (count indent-str)
                                   pos (:pos context)
-                                  [lines next-context] (read-indented-lines context current-indent)
+                                  next-context (read-indented-lines context
+                                                                    current-indent)
                                   eof? (eof? next-context)
-                                  next-pos (:pos next-context)]
+                                  {next-pos :pos lines :buffers} next-context]
                               (-> next-context
                                   (update-ast append-blockquote-body->indent
                                               lines
@@ -668,18 +667,20 @@
                                   (update-ast append-applicable-error-blockquote-no-end-blank-line
                                               next-pos
                                               lines
-                                              eof?))))})
+                                              eof?)
+                                  clear-buffers)))})
 
 (def body->bullet {:name :bullet,
                    :state :body,
                    :parse (fn [context [_ style spacing text]]
                             (let [indent (inc (count spacing))
                                   pos (:pos context)
-                                  [lines next-context] (read-indented-lines
+                                  next-context (read-indented-lines
                                                         (-> context
                                                             (add-to-buffers text)
                                                             forward)
-                                                        indent)]
+                                                        indent)
+                                  lines (:buffers next-context)]
                               (-> next-context
                                   (update-ast append-bullet-list style)
                                   (update-ast append-bullet-item lines indent pos)
@@ -735,11 +736,12 @@
                      :parse (fn [context [_ style spacing text]]
                               (let [bullet-list (-> context :ast z/node)
                                     indent (inc (count spacing))
-                                    [indented-lines next-context] (read-indented-lines
-                                                                   (-> context
-                                                                       (add-to-buffers text)
-                                                                       forward)
-                                                                   indent)
+                                    next-context (read-indented-lines
+                                                  (-> context
+                                                      (add-to-buffers text)
+                                                      forward)
+                                                  indent)
+                                    indented-lines (:buffers next-context)
                                     {lines :lines idx :current-idx pos :pos} context]
                                 (if (and (= (:type bullet-list) :bullet-list)
                                          (= (:style bullet-list) style))

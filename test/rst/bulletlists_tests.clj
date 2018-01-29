@@ -413,3 +413,44 @@
                                               [(contains
                                                 {:type :text
                                                  :value "Document may not end with a transition."})])})])}))))
+
+(fact "A nested bullet list"
+      (let [lines ["- - First Item"
+                   "  - Second Item"
+                   "- Another Item"]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 1))})
+        (let [[bullet-list] (-> root :children)
+              [item-1st item-2nd] (-> bullet-list :children)]
+          bullet-list => (contains
+                          {:type :bullet-list
+                           :children #(-> % count (= 2))})
+          item-1st => (contains
+                       {:type :bullet-item
+                        :children #(-> % count (= 1))})
+          item-2nd => (contains
+                       {:type :bullet-item
+                        :indent 2
+                        :children (just
+                                   [(contains
+                                     {:type :text
+                                      :value "Another Item"})])})
+          (let [[sub-bullet-list] (-> item-1st :children)
+                [sub-item-1st sub-item-2nd] (-> sub-bullet-list :children)]
+            sub-bullet-list => (contains
+                                {:type :bullet-list
+                                 :children #(-> % count (= 2))})
+            sub-item-1st => (contains
+                             {:type :bullet-item
+                              :indent 4
+                              :children (just
+                                         [(contains
+                                           {:type :text
+                                            :value "First Item"})])})
+            sub-item-2nd => (contains
+                             {:type :bullet-item
+                              :indent 4
+                              :children (just
+                                         [(contains
+                                           {:type :text
+                                            :value "Second Item"})])})))))

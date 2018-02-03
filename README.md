@@ -25,16 +25,16 @@ Document Body
   + Inline internal target
 - Block
   + Literal block
-  + Block quotes `On-going`
+  + Block quotes `Checked`
   + Doctest block
 - Lists
-  + Bullet
+  + Bullet `Checked`
   + Enumerated
   + Definitions
   + Field lists
   + Option lists
 - Table
-  + Grid table
+  + Grid table `On-going`
   + Simple table
 - Explicit markup blocks
   + Footnote

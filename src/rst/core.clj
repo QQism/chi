@@ -13,6 +13,8 @@
                    :error    3
                    :severe   4})
 
+(defrecord StateTransition [state name parse])
+
 (defprotocol IReadingLines
   (current-line [_])
   (next-line [_])
@@ -366,6 +368,16 @@
           (append-error ast error))))
     ast))
 
+(defn append-applicable-error-table-no-end-blank-line [ast pos idx lines]
+  (let [current-line (nth lines idx :eof)]
+    (if-not (or (= current-line :eof) (match-transition? :blank current-line))
+      (let [msg "Blank line required after table."
+            [row col] pos
+            prev-pos [(dec row) col]
+            error (create-error msg :warning prev-pos)]
+        (append-error ast error))
+      ast)))
+
 (defn append-error-unexpected-indentation [ast pos]
   (let [msg "Unexpected indentation."
         error (create-error msg :error pos)]
@@ -393,6 +405,11 @@
         new-pos [row raw-indent]
         processed-bullet-item (process-lines lines bullet-item new-pos)]
     (-> ast (append-node processed-bullet-item))))
+
+(defn append-preserve-text [ast lines]
+  (let [block-text (string/join lines "\r\n")
+        preserve-text (create-preserve block-text)]
+    (-> ast (append-node preserve-text))))
 
 (defn body->blank [context _]
   (-> context forward))
@@ -671,7 +688,7 @@
 
 (defn ^:private extract-text-block [context]
   (loop [current-context context]
-    (if-not (eof? context)
+    (if-not (eof? current-context)
       (let [line (current-line current-context)]
         (if-not (match-transition? :blank line)
           (recur (-> current-context
@@ -679,10 +696,6 @@
                      forward))
           current-context))
       current-context)))
-
-(defn ^:private extract-table-block [context]
-  (let [new-context (extract-text-block context)]
-    ))
 
 (defn ^:private backward-buffers [context idx]
   (let [lines (:buffers context)
@@ -692,6 +705,18 @@
     (-> context
         (backward offset-idx)
         (update-buffers sub-lines))))
+
+(defn ^:private extract-table-block [context]
+  (let [next-context (extract-text-block context)
+        lines (:buffers next-context)
+        end-idx (-> lines count dec)]
+    (loop [idx end-idx]
+      (if (> idx 2)
+        (let [line (nth lines idx)]
+          (if (match-transition? :grid-table-top line)
+            (backward-buffers next-context idx)
+            (recur (dec idx))))
+        (backward-buffers next-context idx)))))
 
 ;;(let [context (make-context content-lines
 ;;                            (zip-node {:type :root :iid (get-iid) :children []})
@@ -711,13 +736,22 @@
 (match-transition? :grid-table-top "+--------+------------+---------+")
 
 (defn isolate-grid-table [context]
- ;; (let [block-text (ex)]
-  ;;  )
-  )
+  (let [next-context (extract-table-block context)]
+    (do
+      (println (str "Current idx" (:current-idx next-context)))
+      next-context)))
 
 (defn body->grid-table-top
   [context match]
-  )
+  (let [next-context (isolate-grid-table context)
+        {current-idx :current-idx pos :pos buffers :buffers lines :lines} next-context]
+    (-> next-context
+        (update-ast append-preserve-text buffers)
+        (update-ast append-applicable-error-table-no-end-blank-line
+                    pos
+                    current-idx
+                    lines)
+        clear-buffers)))
 
 (def body->field-marker {:name :enum,
                          :state :body,
@@ -777,11 +811,6 @@
           (update-ast append-bullet-item indented-lines indent pos)
           clear-buffers))))
 
-
-(defrecord StateTransition [state name parse])
-
-(StateTransition. :body :blank body->blank)
-
 (def states
   {:body           {:transitions [(StateTransition. :body :blank body->blank)
                                   (StateTransition. :body :indent body->indent)
@@ -791,7 +820,7 @@
                                   ;;body->option-marker
                                   ;;body->doctest
                                   ;;body->line-block
-                                  ;;body->grid-table-top
+                                  (StateTransition. :body :grid-table-top body->grid-table-top)
                                   ;;body->simple-table-top
                                   ;;body->explicit-markup
                                   ;;body->anonymous

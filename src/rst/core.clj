@@ -109,6 +109,7 @@
    :grid-table-top #"\+-[-\+]+-\+ *$"
    :grid-table-head-sep #"\+=[=+]+=\+ *$"
    :grid-table-left-side #"^(\+|\|).*"
+   :grid-table-right-side #".*(\+|\|)$"
    :bullet  #"([-+*\u2022\u2023\u2043])(\s+)(.*|$)"
    :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
    :text    #".+"})
@@ -119,6 +120,7 @@
 (re-matches (:grid-table-top patterns) "+--+------+")
 (re-matches (:grid-table-head-sep patterns) "+===+")
 (re-matches (:grid-table-left-side patterns) "+ jj")
+(re-matches (:grid-table-right-side patterns) "+ jj   +  ")
 
 ;;(let [[_ style spacing text] (re-matches (:bullet patterns) "*   Hello")
 ;;      indent (inc (count spacing))]
@@ -409,9 +411,15 @@
     (-> ast (append-node processed-bullet-item))))
 
 (defn append-preserve-text [ast lines]
-  (let [block-text (string/join lines "\r\n")
+  (let [block-text (string/join "\r\n" lines)
         preserve-text (create-preserve block-text)]
     (-> ast (append-node preserve-text))))
+
+(defn append-error-malformed-table [ast pos lines]
+  (let [block-text (string/join "\r\n" lines)
+        msg "Malformed table."
+        error (create-error msg :error pos block-text)]
+    (append-error ast error)))
 
 (defn body->blank [context _]
   (-> context forward))
@@ -735,11 +743,31 @@
           context))
       context)))
 
+(defn ^:private mark-table-right-edge [context]
+  (let [lines (:buffers context)
+        width (-> lines first count)
+        c (count lines)]
+    (if (> c 0)
+      (loop [idx 0]
+        (if (< idx c)
+          (let [line (nth lines idx)]
+            (if (and (= width (count line))
+                     (match-transition? :grid-table-right-side line))
+              (recur (inc idx))
+              (let [[row col] (:pos context)
+                    last-pos [(- row c )col]]
+                (-> context
+                   (update-ast append-error-malformed-table last-pos lines)
+                   clear-buffers))))
+          context))
+      context)))
+
 (defn ^:private extract-table-block [context]
   (-> context
       extract-text-block
       mark-table-left-edge
-      mark-table-bottom))
+      mark-table-bottom
+      mark-table-right-edge))
 
 ;;(let [context (make-context content-lines
 ;;                            (zip-node {:type :root :iid (get-iid) :children []})
@@ -756,7 +784,6 @@
 ;;          (recur (dec idx))))
 ;;      (backward-buffers next-context idx))))
 
-(match-transition? :grid-table-top "+--------+------------+---------+")
 
 (defn isolate-grid-table [context]
   (let [next-context (extract-table-block context)]

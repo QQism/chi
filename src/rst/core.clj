@@ -107,7 +107,8 @@
   {:blank   #" *$"
    :indent  #"(\s+)(.+)"
    :grid-table-top #"\+-[-\+]+-\+ *$"
-   :head-table-sep #"\+=[=+]+=\+ *$"
+   :grid-table-head-sep #"\+=[=+]+=\+ *$"
+   :grid-table-left-side #"^(\+|\|).*"
    :bullet  #"([-+*\u2022\u2023\u2043])(\s+)(.*|$)"
    :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
    :text    #".+"})
@@ -116,7 +117,8 @@
 (re-matches (:line patterns) "***")
 (re-matches (:bullet patterns) "* Item")
 (re-matches (:grid-table-top patterns) "+--+------+")
-(re-matches (:head-table-sep patterns) "+===+")
+(re-matches (:grid-table-head-sep patterns) "+===+")
+(re-matches (:grid-table-left-side patterns) "+ jj")
 
 ;;(let [[_ style spacing text] (re-matches (:bullet patterns) "*   Hello")
 ;;      indent (inc (count spacing))]
@@ -706,17 +708,38 @@
         (backward offset-idx)
         (update-buffers sub-lines))))
 
+(defn ^:private mark-table-bottom [context]
+  (let [lines (:buffers context)
+        c (count lines)
+        end-idx (dec c)]
+    (if (> c 0)
+      (loop [idx end-idx]
+        (if (> idx 2)
+          (let [line (nth lines idx)]
+            (if (match-transition? :grid-table-top line)
+              (backward-buffers context idx)
+              (recur (dec idx))))
+          (backward-buffers context idx)))
+      context)))
+
+(defn ^:private mark-table-left-edge [context]
+  (let [lines (:buffers context)
+        c (count lines)]
+    (if (> c 0)
+      (loop [idx 0]
+        (if (< idx c)
+          (let [line (nth lines idx)]
+            (if (match-transition? :grid-table-left-side line)
+              (recur (inc idx))
+              (backward-buffers context (dec idx))))
+          context))
+      context)))
+
 (defn ^:private extract-table-block [context]
-  (let [next-context (extract-text-block context)
-        lines (:buffers next-context)
-        end-idx (-> lines count dec)]
-    (loop [idx end-idx]
-      (if (> idx 2)
-        (let [line (nth lines idx)]
-          (if (match-transition? :grid-table-top line)
-            (backward-buffers next-context idx)
-            (recur (dec idx))))
-        (backward-buffers next-context idx)))))
+  (-> context
+      extract-text-block
+      mark-table-left-edge
+      mark-table-bottom))
 
 ;;(let [context (make-context content-lines
 ;;                            (zip-node {:type :root :iid (get-iid) :children []})

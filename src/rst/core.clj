@@ -696,7 +696,10 @@
 
 (defn body->enum [context match])
 
-(defn ^:private extract-text-block [context]
+(defn ^:private extract-text-block
+  "Extract the text block from the current line
+   to the nearest blank line"
+  [context]
   (loop [current-context context]
     (if-not (eof? current-context)
       (let [line (current-line current-context)]
@@ -716,7 +719,10 @@
         (backward offset-idx)
         (update-buffers sub-lines))))
 
-(defn ^:private mark-table-bottom [context]
+(defn ^:private mark-table-bottom
+  "Find the bottom of the table,
+   move the context to after that line"
+  [context]
   (let [lines (:buffers context)
         c (count lines)
         end-idx (dec c)]
@@ -730,7 +736,10 @@
           (backward-buffers context idx)))
       context)))
 
-(defn ^:private mark-table-left-edge [context]
+(defn ^:private mark-table-left-edge
+  "Check every line of buffers if it belongs to the table
+   Stop when it does not and move the context to that line"
+  [context]
   (let [lines (:buffers context)
         c (count lines)]
     (if (> c 0)
@@ -757,10 +766,17 @@
               (let [[row col] (:pos context)
                     last-pos [(- row c )col]]
                 (-> context
-                   (update-ast append-error-malformed-table last-pos lines)
-                   clear-buffers))))
+                    (update-ast append-error-malformed-table last-pos lines)
+                    clear-buffers))))
           context))
       context)))
+
+(defn ^:private find-grid-table-headers [lines]
+  (reduce-kv (fn [heads idx line]
+               (if (match-transition? :grid-table-head-sep line)
+                 (conj heads idx)
+                 heads))
+             [] lines))
 
 (defn ^:private extract-table-block [context]
   (-> context
@@ -784,19 +800,28 @@
 ;;          (recur (dec idx))))
 ;;      (backward-buffers next-context idx))))
 
+(defn create-grid-table [ast width ]
+  (create-node {:type :table
+                }))
+
+(defn append-grid-table [ast pos lines]
+  (if-not (empty? lines)
+    ast
+    ast))
+
 
 (defn isolate-grid-table [context]
   (let [next-context (extract-table-block context)]
-    (do
-      (println (str "Current idx" (:current-idx next-context)))
-      next-context)))
+    next-context))
 
 (defn body->grid-table-top
   [context match]
   (let [next-context (isolate-grid-table context)
-        {current-idx :current-idx pos :pos buffers :buffers lines :lines} next-context]
+        {current-idx :current-idx pos :pos buffers :buffers lines :lines} next-context
+        [row col] pos
+        table-pos [(- row (count buffers)) col]]
     (-> next-context
-        (update-ast append-preserve-text buffers)
+        (update-ast append-grid-table table-pos buffers)
         (update-ast append-applicable-error-table-no-end-blank-line
                     pos
                     current-idx

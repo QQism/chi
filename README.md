@@ -41,6 +41,10 @@ Document Body
   + Citation
   + Hyperlink target
   + Directives
+    - highlight.js
+    - Mathjax
+    - Tables
+    - Images
   + Substitution definitions
   + Comments
 

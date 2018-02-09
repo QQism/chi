@@ -149,7 +149,6 @@
   ;; TODO: parse the text into an vector of text
   ;; if there are inline-markups, parse them accordingly
   [(create-node {:type :text
-                 :iid (get-iid)
                  :value (string/trimr text)})])
 
 (defn create-header [text line]
@@ -990,7 +989,7 @@
             z/root)))))
 
 (defn process-document [document-lines]
-  (let [root-node {:type :root :iid (get-iid) :children []}
+  (let [root-node (create-node {:type :root :children []})
         pos [0 0]]
     (process-lines document-lines root-node pos)))
 

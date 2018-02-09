@@ -71,16 +71,16 @@
 (defn update-ast [context f & args]
   (update context :ast #(apply f % args)))
 
-(def iid-counter (atom 0))
+(def uid-counter (atom 0))
 
-(defn get-iid []
-  (swap! iid-counter inc))
+(defn get-uid []
+  (swap! uid-counter inc))
 
-(defn get-iid-path [ast]
+(defn get-uid-path [ast]
   (-> ast
       z/path
-      (->> (map :iid))
-      (conj (:iid (z/node ast)))
+      (->> (map :uid))
+      (conj (:uid (z/node ast)))
       reverse))
 
 (defn up-to-root [ast]
@@ -140,7 +140,7 @@
       nil? not))
 
 (defn create-node [n]
-  (merge {:iid (get-iid)} n))
+  (merge {:uid (get-uid)} n))
 
 (defn create-preserve [text]
   (create-node {:type :preserve :value text}))
@@ -216,10 +216,10 @@
 (defn append-transition [ast transition]
   (append-node ast transition))
 
-(defn find-loc-with-iid [ast child-iid]
-  (if (-> ast z/node :iid (= child-iid))
+(defn find-loc-with-uid [ast child-uid]
+  (if (-> ast z/node :uid (= child-uid))
     ast
-    (some #(if (-> % z/node :iid (= child-iid)) %)
+    (some #(if (-> % z/node :uid (= child-uid)) %)
           (children-loc ast))))
 
 ;; TODO: add the current loc id to path
@@ -229,12 +229,12 @@
   ;;   | return the location
   ;; - else
   ;;   | return nil
-  (let [current-iid-path (get-iid-path ast)]
+  (let [current-uid-path (get-uid-path ast)]
     (loop [current-loc (up-to-root ast)
            depth 0]
-      (if (< depth (count current-iid-path))
-        (let [current-iid (nth current-iid-path depth)]
-          (if-let [section-loc (find-loc-with-iid current-loc current-iid)]
+      (if (< depth (count current-uid-path))
+        (let [current-uid (nth current-uid-path depth)]
+          (if-let [section-loc (find-loc-with-uid current-loc current-uid)]
             (let [section (z/node section-loc)]
               (if (= (:style section) style)
                 current-loc

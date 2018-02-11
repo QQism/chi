@@ -423,11 +423,17 @@
         preserve-text (create-preserve block-text)]
     (-> ast (append-node preserve-text))))
 
+(defn create-error-malformed-table
+  ([lines pos description]
+   (let [block-text (string/join "\r\n" lines)
+         msg (string/join " " ["Malformed table." description])]
+     (create-error (string/trimr msg) :error pos block-text)))
+  ([lines pos]
+   (create-error-malformed-table lines pos "")))
+
 (defn append-error-malformed-table [ast pos lines]
-  (let [block-text (string/join "\r\n" lines)
-        msg "Malformed table."
-        error (create-error msg :error pos block-text)]
-    (append-error ast error)))
+  (let [error (create-error-malformed-table lines pos)]
+    (append-error ast (error))))
 
 (defn body->blank [context _]
   (-> context forward))
@@ -809,14 +815,18 @@
 
 (defn ^:private trivial-block-indents [lines]
   (or (reduce (fn [m line]
-                (let [indent (line-indent line)]
-                  (if m (min m indent) indent)))
+                (if-not (empty? line)
+                  (let [indent (line-indent line)]
+                    (if m (min m indent) indent))
+                  m))
               nil lines)
       0))
 
 (defn strip-indents [lines indent]
   (reduce (fn [xs line]
-            (conj xs (subs line indent)))
+            (if-not (empty? line)
+              (conj xs (subs line indent))
+              (conj xs line)))
           [] lines))
 
 (defn ^:private get-cell-content
@@ -908,7 +918,7 @@
 
 (defn ^:private scan-up [ast lines top left bottom right]
   (do
-    (println (str "Scan Up - Top: " top " Left: " left " Bottom: " bottom " Right: " right))
+    ;;(println (str "Scan Up - Top: " top " Left: " left " Bottom: " bottom " Right: " right))
     (loop [table-ast ast
            row-id (dec bottom)]
       (if-not (< row-id top)
@@ -925,7 +935,7 @@
 
 (defn ^:private scan-left [ast lines top left bottom right]
   (do
-    (println (str "Scan Left - Top: " top " Left: " left " Bottom: " bottom " Right: " right))
+    ;;(println (str "Scan Left - Top: " top " Left: " left " Bottom: " bottom " Right: " right))
     (loop [table-ast ast
            col-id (dec right)]
       (if-not (< col-id left)
@@ -942,14 +952,14 @@
 
 (defn ^:private scan-down [ast lines top left right]
   (do
-    (println (str "Scan Down - Top: " top " Left: " left " Right: " right))
+    ;;(println (str "Scan Down - Top: " top " Left: " left " Right: " right))
     (let [table (z/node ast)
           height (:height table)]
       (loop [table-ast ast
              row-id (inc top)]
         (do
-          (println (str "Node: " (:type table)) )
-          (println (str "Table height: " height) )
+          ;;(println (str "Node: " (:type table)) )
+          ;;(println (str "Table height: " height) )
           (if (< row-id height)
             (let [c (nth-2d lines row-id right)]
               (case c
@@ -964,7 +974,7 @@
 
 (defn ^:private scan-right [ast lines top left]
   (do
-    (println (str "Scan Right - Top: " top " Left: " left))
+    ;;(println (str "Scan Right - Top: " top " Left: " left))
     (let [table (z/node ast)
           width (:width table)]
       (loop [table-ast ast
@@ -992,17 +1002,39 @@
            (update table-body :children #(sort-by :id %))))
         z/up)))
 
+(defn ^:private table-body-cells [table]
+  (let [table-body (some #(if (= (:type %) :table-body) %) (:children table))
+        rows (:children table-body)]
+    (reduce (fn [cells row]
+              (apply conj cells (:children row))) [] rows)))
+
+(defn ^:private table-cells-area [cells]
+  (let [cell-sizes (map :size cells)]
+    (reduce (fn [area [width height]]
+              (+ area (* (inc width) (inc height)))) 0 cell-sizes)))
+
+(defn ^:private badform-table? [table]
+  (let [cells (table-body-cells table)
+        cells-area (table-cells-area cells)
+        table-width (:width table)
+        table-height (:height table)
+        table-area (* table-width table-height)]
+    (not= table-area
+          (+ cells-area table-height table-width -1))))
+
+
 (defn scan-table-block [ast lines pos]
   (let [[width height] (text-block-size lines)
         init-table (create-grid-table width height pos)
         init-table-ast (-> ast (append-node init-table) move-to-latest-child)]
+    ;;TODO validate & parse header cells
     (loop [table-ast init-table-ast
            corners [[0 0]]]
       (if-not (empty? corners)
         (let [[top left] (peek corners)
               next-corners (pop corners)]
           (do
-            (println (str "Scan corner: Top: " top " Left: " left))
+            ;;(println (str "Scan corner: Top: " top " Left: " left))
             (let [[next-table-ast cell-pos] (scan-right table-ast lines top left)]
               (if (and (vector? cell-pos) (= (count cell-pos) 4))
                 (let [[_ _ bottom right] cell-pos
@@ -1010,12 +1042,12 @@
                       cell-node (create-table-cell cell-pos cell-content pos)
                       ]
                   (do
-                    (println (str "Top: " top " Left: " left " Bottom: " bottom " Right: " right))
+                    ;;(println (str "Top: " top " Left: " left " Bottom: " bottom " Right: " right))
                     (recur (-> next-table-ast (append-table-body-cell cell-node))
                            (do
-                             (println (str "Next Corners: " next-corners))
-                             (println (str "Top: " top " Right: " right " valid: " (valid-top-left-cell-corner? [top right] [width height])))
-                             (println (str "Bottom: " bottom " Left: " left " valid: " (valid-top-left-cell-corner? [bottom left] [width height])))
+                             ;;(println (str "Next Corners: " next-corners))
+                             ;;(println (str "Top: " top " Right: " right " valid: " (valid-top-left-cell-corner? [top right] [width height])))
+                             ;;(println (str "Bottom: " bottom " Left: " left " valid: " (valid-top-left-cell-corner? [bottom left] [width height])))
                              (-> next-corners (cond->
                                                   (valid-top-left-cell-corner? [top right] [width height])
                                                 (conj [top right])
@@ -1023,7 +1055,9 @@
                                                 (conj [bottom left]))
                                  distinct sort reverse vec)))))
                 (recur table-ast (-> corners sort reverse vec pop))))))
-        (sort-table-rows table-ast)))))
+        (if (-> table-ast z/node badform-table?)
+          (z/replace table-ast (create-error-malformed-table lines pos "Malformed table; parse incomplete."))
+          (-> table-ast sort-table-rows z/up))))))
 
 (defn isolate-grid-table [context]
   (let [next-context (extract-table-block context)]

@@ -2,7 +2,8 @@
   (:require  [clojure.java.io :as io]
              [clojure.string :as string]
              [clojure.pprint :refer [pprint]]
-             [clojure.zip :as z]))
+             [clojure.zip :as z]
+             [clojure.set :as set]))
 
 (def content-lines (-> (io/resource "table.rst")
                        slurp
@@ -728,7 +729,7 @@
   (let [lines (:buffers context)
         end-idx (-> lines count dec)
         offset-idx (- end-idx idx)
-        sub-lines (-> lines (subvec 0 (inc idx)))]
+        sub-lines (->> lines (split-at (inc idx)) first vec)]
     (-> context
         (backward offset-idx)
         (update-buffers sub-lines))))
@@ -843,8 +844,10 @@
 
 (defn create-table-cell [[top left bottom right] content [file-row file-col]]
   (let [cell (create-node {:type :cell
-                           :cell-pos [top left]
-                           :size [(- right left 1) (- bottom top 1)]
+                           :top top
+                           :left left
+                           :width (- right left 1)
+                           :height (- bottom top 1)
                            :children []})
         trivial-indents (trivial-block-indents content)
         stripped-content (strip-indents content trivial-indents)
@@ -858,8 +861,7 @@
   (create-node {:type :table-header :children []}))
 
 (defn create-table-body []
-  (create-node {:type :table-body
-                :children [(create-table-row 0)]}))
+  (create-node {:type :table-body :children [(create-table-row 0)]}))
 
 (defn create-grid-table [width height pos]
   (create-node {:type :table
@@ -868,10 +870,11 @@
                 :width width
                 :height height
                 :col-ids (sorted-set 0)
-                :header-idx -1
+                :header-idx nil
                 :children [(create-table-body)]}))
 
 (defn move-to-table-body [ast]
+  ;;TODO handle when there is no init row (row 0) initialy in the table body
   (if (-> ast z/node :type (= :table))
     (loop [table-child (-> ast z/down)]
       (cond (-> table-child z/node :type (= :table-body)) table-child
@@ -911,7 +914,7 @@
                 table)))))
 
 (defn append-table-body-cell [ast cell]
-  (let [[row-id _] (-> cell :cell-pos)
+  (let [row-id (:top cell)
         row-ast (move-to-body-row ast row-id)]
     (-> row-ast (append-node cell)
         z/up z/up)))
@@ -1009,7 +1012,7 @@
               (apply conj cells (:children row))) [] rows)))
 
 (defn ^:private table-cells-area [cells]
-  (let [cell-sizes (map :size cells)]
+  (let [cell-sizes (map #(identity [(:width %) (:height %)]) cells)]
     (reduce (fn [area [width height]]
               (+ area (* (inc width) (inc height)))) 0 cell-sizes)))
 
@@ -1022,11 +1025,25 @@
     (not= table-area
           (+ cells-area table-height table-width -1))))
 
+(defn ^:private split-header-and-body-rows [ast]
+  (let [table (z/node ast)]
+    (if-let [header-id (:header-idx table)]
+      (let [table-header (some #(if (= (:type %) :table-header) %) (:children table))
+            table-body (some #(if (= (:type %) :table-body) %) (:children table))
+            body-rows (:children table-body)
+            header-rows (filter #(< (:id %) header-id) body-rows)
+            updated-table-header (assoc table-header :children header-rows)
+            row-comparator #(< (:id %1) (:id %2))
+            updated-table-body (update table-body :children
+                                       #(vec (set/difference (apply sorted-set-by row-comparator %)
+                                                             (apply sorted-set-by row-comparator header-rows))))]
+        (z/edit ast #(assoc % :children [updated-table-header updated-table-body])))
+      ast)))
 
-(defn scan-table-block [ast lines pos]
-  (let [[width height] (text-block-size lines)
-        init-table (create-grid-table width height pos)
-        init-table-ast (-> ast (append-node init-table) move-to-latest-child)]
+(defn scan-table-cells [ast lines]
+  (let [table (z/node ast)
+        {width :width height :height pos :pos} table
+        init-table-ast ast]
     ;;TODO validate & parse header cells
     (loop [table-ast init-table-ast
            corners [[0 0]]]
@@ -1057,7 +1074,37 @@
                 (recur table-ast (-> corners sort reverse vec pop))))))
         (if (-> table-ast z/node badform-table?)
           (z/replace table-ast (create-error-malformed-table lines pos "Malformed table; parse incomplete."))
-          (-> table-ast sort-table-rows z/up))))))
+          (-> table-ast
+              split-header-and-body-rows
+              sort-table-rows
+              z/up))))))
+
+(defn ^:private remove-table-header-line [lines header-idx]
+  (if header-idx
+    (assoc lines header-idx (-> lines
+                                (nth header-idx)
+                                (string/replace "=" "-")))
+    lines))
+
+(defn scan-table-block [ast lines pos]
+  (let [[width height] (text-block-size lines)
+        init-table (create-grid-table width height pos)
+        init-table-ast (-> ast (append-node init-table) move-to-latest-child)
+        header-ids (find-grid-table-header-ids lines)]
+    ;;TODO validate & parse header cells
+    (case (count header-ids)
+      0 (scan-table-cells init-table-ast lines)
+      1 (let [header-idx (first header-ids)
+              non-header-lines (remove-table-header-line lines header-idx)]
+          (-> init-table-ast
+              (z/edit #(assoc % :header-idx header-idx))
+              (append-node (create-table-header))
+              ;;(append-node (create-table-body))
+              (scan-table-cells non-header-lines)))
+      (let [msg (str "Multiple head/body row separators (table lines "
+                     (string/join ", " header-ids)
+                     "); only one allowed.")]
+        (z/replace init-table-ast (create-error-malformed-table lines pos msg))))))
 
 (defn isolate-grid-table [context]
   (let [next-context (extract-table-block context)]

@@ -927,79 +927,68 @@
         z/up z/up)))
 
 (defn ^:private scan-up [ast lines top left bottom right]
-  (do
-    ;;(println (str "Scan Up - Top: " top " Left: " left " Bottom: " bottom " Right: " right))
-    (loop [table-ast ast
-           row-id (dec bottom)]
-      (if-not (< row-id top)
-        (let [c (nth-2d lines row-id left)]
-          (cond (> row-id top) (case c
-                                 \+ (recur (append-table-body-row ast row-id) (dec row-id))
-                                 \| (recur table-ast (dec row-id))
-                                 [table-ast nil])
-                (= row-id top) (if (= c \+)
-                                 [table-ast [top left bottom right]]
-                                 [table-ast nil])
-                :else [table-ast nil]))
-        [table-ast nil]))))
+  (loop [table-ast ast
+         row-id (dec bottom)]
+    (if-not (< row-id top)
+      (let [c (nth-2d lines row-id left)]
+        (cond (> row-id top) (case c
+                               \+ (recur (append-table-body-row ast row-id) (dec row-id))
+                               \| (recur table-ast (dec row-id))
+                               [table-ast nil])
+              (= row-id top) (if (= c \+)
+                               [table-ast [top left bottom right]]
+                               [table-ast nil])
+              :else [table-ast nil]))
+      [table-ast nil])))
 
 (defn ^:private scan-left [ast lines top left bottom right]
-  (do
-    ;;(println (str "Scan Left - Top: " top " Left: " left " Bottom: " bottom " Right: " right))
-    (loop [table-ast ast
-           col-id (dec right)]
-      (if-not (< col-id left)
-        (let [c (nth-2d lines bottom col-id)]
-          (cond (> col-id left) (case c
-                                  \+ (recur (append-table-col-id ast col-id) (dec col-id))
-                                  \- (recur table-ast (dec col-id))
-                                  [table-ast nil])
-                (= col-id left) (if (= c \+)
-                                  (scan-up table-ast lines top left bottom right)
-                                  [table-ast nil])
-                :else [table-ast nil]))
-        [table-ast nil]))))
+  (loop [table-ast ast
+         col-id (dec right)]
+    (if-not (< col-id left)
+      (let [c (nth-2d lines bottom col-id)]
+        (cond (> col-id left) (case c
+                                \+ (recur (append-table-col-id ast col-id) (dec col-id))
+                                \- (recur table-ast (dec col-id))
+                                [table-ast nil])
+              (= col-id left) (if (= c \+)
+                                (scan-up table-ast lines top left bottom right)
+                                [table-ast nil])
+              :else [table-ast nil]))
+      [table-ast nil])))
 
 (defn ^:private scan-down [ast lines top left right]
-  (do
-    ;;(println (str "Scan Down - Top: " top " Left: " left " Right: " right))
-    (let [table (z/node ast)
-          height (:height table)]
-      (loop [table-ast ast
-             row-id (inc top)]
-        (do
-          ;;(println (str "Node: " (:type table)) )
-          ;;(println (str "Table height: " height) )
-          (if (< row-id height)
-            (let [c (nth-2d lines row-id right)]
-              (case c
-                \+ (let [[next-table-ast cell-pos] (-> ast (append-table-body-row row-id)
-                                                       (scan-left lines top left row-id right))]
-                     (if-not cell-pos
-                       (recur next-table-ast (inc row-id))
-                       [next-table-ast cell-pos]))
-                \| (recur table-ast (inc row-id))
-                [ast nil]))
-            [ast nil]))))))
+  (let [table (z/node ast)
+        height (:height table)]
+    (loop [table-ast ast
+           row-id (inc top)]
+      (if (< row-id height)
+        (let [c (nth-2d lines row-id right)]
+          (case c
+            \+ (let [[next-table-ast cell-pos] (-> ast (append-table-body-row row-id)
+                                                   (scan-left lines top left row-id right))]
+                 (if-not cell-pos
+                   (recur next-table-ast (inc row-id))
+                   [next-table-ast cell-pos]))
+            \| (recur table-ast (inc row-id))
+            [ast nil]))
+        [ast nil]))))
 
 (defn ^:private scan-right [ast lines top left]
-  (do
-    ;;(println (str "Scan Right - Top: " top " Left: " left))
-    (let [table (z/node ast)
-          width (:width table)]
-      (loop [table-ast ast
-             col-id (inc left)]
-        (if (< col-id width)
-          (let [c (nth-2d lines top col-id)]
-            (case c
-              \+ (let [[next-table-ast cell-pos] (-> ast (append-table-col-id col-id)
-                                                     (scan-down lines top left col-id))]
-                   (if-not cell-pos
-                     (recur next-table-ast (inc col-id))
-                     [next-table-ast cell-pos]))
-              \- (recur table-ast (inc col-id))
-              [ast nil]))
-          [ast nil])))))
+  (let [table (z/node ast)
+        width (:width table)]
+    (loop [table-ast ast
+           col-id (inc left)]
+      (if (< col-id width)
+        (let [c (nth-2d lines top col-id)]
+          (case c
+            \+ (let [[next-table-ast cell-pos] (-> ast (append-table-col-id col-id)
+                                                   (scan-down lines top left col-id))]
+                 (if-not cell-pos
+                   (recur next-table-ast (inc col-id))
+                   [next-table-ast cell-pos]))
+            \- (recur table-ast (inc col-id))
+            [ast nil]))
+        [ast nil]))))
 
 (defn ^:private valid-top-left-cell-corner? [[top left] [width height]]
   (and (not= top (dec height)) (not= left (dec width))))
@@ -1066,28 +1055,19 @@
       (if-not (empty? corners)
         (let [[top left] (peek corners)
               next-corners (pop corners)]
-          (do
-            ;;(println (str "Scan corner: Top: " top " Left: " left))
-            (let [[next-table-ast cell-pos] (scan-right table-ast lines top left)]
-              (if (and (vector? cell-pos) (= (count cell-pos) 4))
-                (let [[_ _ bottom right] cell-pos
-                      cell-content (get-cell-content lines cell-pos)
-                      cell-node (create-table-cell cell-pos cell-content pos)
-                      ]
-                  (do
-                    ;;(println (str "Top: " top " Left: " left " Bottom: " bottom " Right: " right))
-                    (recur (-> next-table-ast (append-table-body-cell cell-node))
-                           (do
-                             ;;(println (str "Next Corners: " next-corners))
-                             ;;(println (str "Top: " top " Right: " right " valid: " (valid-top-left-cell-corner? [top right] [width height])))
-                             ;;(println (str "Bottom: " bottom " Left: " left " valid: " (valid-top-left-cell-corner? [bottom left] [width height])))
-                             (-> next-corners (cond->
-                                                  (valid-top-left-cell-corner? [top right] [width height])
-                                                (conj [top right])
-                                                (valid-top-left-cell-corner? [bottom left] [width height])
-                                                (conj [bottom left]))
-                                 distinct sort reverse vec)))))
-                (recur table-ast (-> corners sort reverse vec pop))))))
+          (let [[next-table-ast cell-pos] (scan-right table-ast lines top left)]
+            (if (and (vector? cell-pos) (= (count cell-pos) 4))
+              (let [[_ _ bottom right] cell-pos
+                    cell-content (get-cell-content lines cell-pos)
+                    cell-node (create-table-cell cell-pos cell-content pos)]
+                (recur (-> next-table-ast (append-table-body-cell cell-node))
+                       (-> next-corners (cond->
+                                            (valid-top-left-cell-corner? [top right] [width height])
+                                          (conj [top right])
+                                          (valid-top-left-cell-corner? [bottom left] [width height])
+                                          (conj [bottom left]))
+                           distinct sort reverse vec)))
+              (recur table-ast (-> corners sort reverse vec pop)))))
         (if (-> table-ast z/node badform-table?)
           (z/replace table-ast (create-error-malformed-table lines pos "Parse incomplete."))
           (-> table-ast

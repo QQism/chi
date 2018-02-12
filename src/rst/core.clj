@@ -874,10 +874,17 @@
                 :children [(create-table-body)]}))
 
 (defn move-to-table-body [ast]
-  ;;TODO handle when there is no init row (row 0) initialy in the table body
   (if (-> ast z/node :type (= :table))
     (loop [table-child (-> ast z/down)]
       (cond (-> table-child z/node :type (= :table-body)) table-child
+            (nil? table-child) nil
+            :else (recur (z/right table-child))))
+    nil))
+
+(defn move-to-table-header [ast]
+  (if (-> ast z/node :type (= :table))
+    (loop [table-child (-> ast z/down)]
+      (cond (-> table-child z/node :type (= :table-header)) table-child
             (nil? table-child) nil
             :else (recur (z/right table-child))))
     nil))
@@ -997,13 +1004,23 @@
 (defn ^:private valid-top-left-cell-corner? [[top left] [width height]]
   (and (not= top (dec height)) (not= left (dec width))))
 
-(defn ^:private sort-table-rows [ast]
-  (let [table-body-ast (move-to-table-body ast)]
-    (-> table-body-ast
+(defn ^:private sort-table-body-rows [ast]
+  (-> ast
+      move-to-table-body
+      (z/edit
+       (fn [table-body]
+         (update table-body :children #(sort-by :id %))))
+      z/up))
+
+(defn ^:private sort-table-header-rows [ast]
+  (if (-> ast z/node :header-idx)
+    (-> ast
+        move-to-table-header
         (z/edit
          (fn [table-body]
            (update table-body :children #(sort-by :id %))))
-        z/up)))
+        z/up)
+    ast))
 
 (defn ^:private table-body-cells [table]
   (let [table-body (some #(if (= (:type %) :table-body) %) (:children table))
@@ -1044,7 +1061,6 @@
   (let [table (z/node ast)
         {width :width height :height pos :pos} table
         init-table-ast ast]
-    ;;TODO validate & parse header cells
     (loop [table-ast init-table-ast
            corners [[0 0]]]
       (if-not (empty? corners)
@@ -1073,10 +1089,11 @@
                                  distinct sort reverse vec)))))
                 (recur table-ast (-> corners sort reverse vec pop))))))
         (if (-> table-ast z/node badform-table?)
-          (z/replace table-ast (create-error-malformed-table lines pos "Malformed table; parse incomplete."))
+          (z/replace table-ast (create-error-malformed-table lines pos "Parse incomplete."))
           (-> table-ast
               split-header-and-body-rows
-              sort-table-rows
+              sort-table-header-rows
+              sort-table-body-rows
               z/up))))))
 
 (defn ^:private remove-table-header-line [lines header-idx]
@@ -1091,7 +1108,6 @@
         init-table (create-grid-table width height pos)
         init-table-ast (-> ast (append-node init-table) move-to-latest-child)
         header-ids (find-grid-table-header-ids lines)]
-    ;;TODO validate & parse header cells
     (case (count header-ids)
       0 (scan-table-cells init-table-ast lines)
       1 (let [header-idx (first header-ids)

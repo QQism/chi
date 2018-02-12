@@ -37,6 +37,30 @@
               cell-6 => (contains {:type :cell :top 2 :left 26 :width 11 :height 1
                                    :children (just [(contains {:type :text :value "Cell 2-3"})])}))))))
 
+
+(fact "Empty grid tabler"
+      (let [lines ["+------------+------------+-----------+"
+                   "+------------+------------+-----------+"]
+            root (process-document lines)]
+        root => (contains {:type :root :children #(-> % count (= 1))})
+        (let [[table] (:children root)
+              [table-body] (:children table)]
+          table => (contains {:type :table
+                              :col-ids (sorted-set 0 13 26)
+                              :children #(-> % count (= 1))})
+          table-body => (contains {:type :table-body :children #(-> % count (= 1))})
+
+          (let [[row] (:children table-body)]
+            row => (contains {:type :row :id 0 :children #(-> % count (= 3))})
+
+            (let [[cell-1 cell-2 cell-3] (:children row)]
+              cell-1 => (contains {:type :cell :top 0 :left 0 :width 12 :height 0
+                                   :children []})
+              cell-2 => (contains {:type :cell :top 0 :left 13 :width 12 :height 0
+                                   :children []})
+              cell-3 => (contains {:type :cell :top 0 :left 26 :width 11 :height 0
+                                   :children []}))))))
+
 (fact "Simple grid table with a header"
       (let [lines ["+------------+------------+-----------+"
                    "| Header 1   |  Header 2  |  Header 3 |"

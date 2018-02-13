@@ -998,7 +998,7 @@
       move-to-table-body
       (z/edit
        (fn [table-body]
-         (update table-body :children #(sort-by :id %))))
+         (update table-body :children #(->> % (sort-by :id) vec))))
       z/up))
 
 (defn ^:private sort-table-header-rows [ast]
@@ -1007,7 +1007,7 @@
         move-to-table-header
         (z/edit
          (fn [table-body]
-           (update table-body :children #(sort-by :id %))))
+           (update table-body :children #(->> % (sort-by :id) vec))))
         z/up)
     ast))
 

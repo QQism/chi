@@ -276,9 +276,9 @@
                                          :value "Paragraph content"})])})))))
 
 (fact "Title overline and overline are shorter than title text but not longer than 3 characters"
-      (let [lines ["==="
+      (let [lines ["===="
                    "Section Title"
-                   "==="
+                   "===="
                    "Paragraph content"]
             root (process-document lines)]
         root  => (contains {:type :root :children #(-> % count (= 1))})
@@ -306,7 +306,7 @@
                                                    :value "Title overline too short."})])})
                                    (contains
                                     {:type :preserve
-                                     :value "===\r\nSection Title\r\n==="})])})
+                                     :value "====\r\nSection Title\r\n===="})])})
             paragraph => (contains
                           {:type :paragraph
                            :children (just

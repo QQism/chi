@@ -533,7 +533,9 @@
       (let [next-text-line (next-line context)
             next-text-lines (conj current-text-lines next-text-line)]
         (if (match-transition? :line next-text-line)
-          (if (= prev-text-line next-text-line)
+          (if (and (= prev-text-line next-text-line)
+                   (or (not prev-short-line?)
+                       (<= (count current-text-line) (count prev-text-line))))
             (-> context
                 (update-ast append-section-line->text-line prev-pos next-text-lines)
                 forward

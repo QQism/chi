@@ -1,8 +1,9 @@
 (ns rst.blockquotes-test
-  (:require [clojure.test :refer :all]
-            [clojure.string :as string]
-            [rst.test-support :refer :all]
-            [rst.core :refer [process-document]]))
+  (:require
+   ;;[cljs.test :refer-macros [deftest testing]]
+            [rst.test-support :refer-macros [assert-node]]
+            [rst.core :refer [process-document]]
+   ))
 
 
 (deftest single-line-blockquote-ends-with-blank-line

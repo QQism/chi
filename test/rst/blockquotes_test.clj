@@ -1,4 +1,4 @@
-(ns rst.blockquotes-new-test
+(ns rst.blockquotes-test
   (:require [clojure.test :refer :all]
             [clojure.string :as string]
             [rst.test-support :refer :all]

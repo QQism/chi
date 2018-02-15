@@ -1,4 +1,4 @@
-(ns rst.paragraph-new-test
+(ns rst.paragraphs-test
   (:require [clojure.test :refer :all]
             [rst.test-support :refer :all]
             [rst.core :refer [process-document]]))

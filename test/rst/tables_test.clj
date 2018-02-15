@@ -1,4 +1,4 @@
-(ns rst.tables-new-test
+(ns rst.tables-test
   (:require [clojure.test :refer :all]
             [clojure.string :as string]
             [rst.test-support :refer :all]

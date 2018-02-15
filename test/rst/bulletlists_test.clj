@@ -1,4 +1,4 @@
-(ns rst.bulletlists-new-test
+(ns rst.bulletlists-test
   (:require [clojure.test :refer :all]
             [clojure.string :as string]
             [rst.test-support :refer :all]

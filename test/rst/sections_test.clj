@@ -1,4 +1,4 @@
-(ns rst.sections-new-test
+(ns rst.sections-test
   (:require [clojure.test :refer :all]
             [rst.test-support :refer :all]
             [rst.core :refer [process-document]]

@@ -1,4 +1,4 @@
-(ns rst.transitions-new-test
+(ns rst.transitions-test
   (:require [clojure.test :refer :all]
             [clojure.string :as string]
             [rst.test-support :refer :all]

@@ -1,9 +1,11 @@
 (ns rst.transitions-test
-  (:require [clojure.test :refer :all]
-            [clojure.string :as string]
-            [rst.test-support :refer :all]
+  (:require #?(:cljs [cljs.test    :as t :refer-macros [deftest testing]]
+               :clj  [clojure.test :as t :refer        [deftest testing]])
+            #?(:cljs [rst.test-support :refer [assert-node]]
+               :clj  [rst.assert-macros :refer [assert-node]])
             [rst.core :refer [process-document]]))
 
+#?(:cljs (enable-console-print!))
 
 (deftest transition-between-paragraphs
   (testing "Line is longer than 4 chars"

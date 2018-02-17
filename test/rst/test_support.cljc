@@ -1,13 +1,19 @@
 (ns rst.test-support
-  (:require [clojure.test :refer :all]
+  (:require #?(:cljs [cljs.test    :as t]
+               :clj  [clojure.test :as t])
             [clojure.pprint]
-            [clojure.walk :refer [postwalk walk]]))
+            [clojure.walk :refer [postwalk]]))
+
+#?(:cljs (enable-console-print!))
 
 (defn remove-uid [node]
   (postwalk (fn [n]
               (if (and (map? n) (:uid n))
                 (dissoc n :uid)
                 n)) node))
+
+(def function? #?(:cljs fn?
+                  :clj t/function?))
 
 (defn transform-cond-nodes
   ([expected node remove-uid?]
@@ -33,15 +39,10 @@
   ([expected node]
    (transform-cond-nodes expected node true)))
 
-(defmacro assert-node
-  ([expected actual]
-   `(assert-node ~expected ~actual nil))
-  ([expected actual msg]
-   `(let [expected# ~expected
-          actual# ~actual
-          msg# ~msg
-          [cond-expected# cond-actual#] (transform-cond-nodes expected# actual#)]
-      (is (= cond-expected# cond-actual#) msg#))))
+(defn assert-node
+  [expected actual]
+  (let [[cond-expected cond-actual] (transform-cond-nodes expected actual)]
+    (t/is (= cond-expected cond-actual))))
 
 (defn print-node
   ([node]

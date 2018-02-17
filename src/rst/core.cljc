@@ -1,8 +1,8 @@
 (ns rst.core
   (:require [clojure.string :as string]
-             [clojure.pprint :refer [pprint]]
-             [clojure.zip :as z]
-             [clojure.set :as set]))
+            [clojure.pprint :refer [pprint]]
+            [clojure.zip :as z]
+            [clojure.set :as set]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])

@@ -1,9 +1,11 @@
-(ns rst.blockquotes-new-test
-  (:require [clojure.test :refer :all]
-            [clojure.string :as string]
-            [rst.test-support :refer :all]
+(ns rst.blockquotes-test
+  (:require #?(:cljs [cljs.test    :as t :refer-macros [deftest testing]]
+               :clj  [clojure.test :as t :refer        [deftest testing]])
+            #?(:cljs [rst.test-support :refer [assert-node]]
+               :clj  [rst.assert-macros :refer [assert-node]])
             [rst.core :refer [process-document]]))
 
+#?(:cljs (enable-console-print!))
 
 (deftest single-line-blockquote-ends-with-blank-line
   (let [lines ["Lorem Ipsum is simply dummy text"

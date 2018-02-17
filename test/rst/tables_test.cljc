@@ -1,8 +1,12 @@
-(ns rst.tables-new-test
-  (:require [clojure.test :refer :all]
+(ns rst.tables-test
+  (:require #?(:cljs [cljs.test    :as t :refer-macros [deftest testing]]
+               :clj  [clojure.test :as t :refer        [deftest testing]])
+            #?(:cljs [rst.test-support :refer [assert-node]]
+               :clj  [rst.assert-macros :refer [assert-node]])
             [clojure.string :as string]
-            [rst.test-support :refer :all]
             [rst.core :refer [process-document]]))
+
+#?(:cljs (enable-console-print!))
 
 (deftest simple-table-without-header
   (let [lines ["+------------+------------+-----------+"

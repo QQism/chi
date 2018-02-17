@@ -1,17 +1,8 @@
 (ns rst.core
-  (:require  [clojure.java.io :as io]
-             [clojure.string :as string]
-             [clojure.pprint :refer [pprint]]
-             [clojure.zip :as z]
-             [clojure.set :as set]))
-
-(def content-lines (-> (io/resource "table.rst")
-                       slurp
-                       (string/split #"\r|\n")
-                       ;; Remove right whitespaces
-                       (->> (map string/trimr))
-                       ;; Become a vector, giving the random access with 0(1) complexity
-                       vec))
+  (:require [clojure.string :as string]
+            [clojure.pprint :refer [pprint]]
+            [clojure.zip :as z]
+            [clojure.set :as set]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])
@@ -80,10 +71,9 @@
 (defn update-ast [context f & args]
   (update context :ast #(apply f % args)))
 
-(def uid-counter (atom 0))
 
 (defn get-uid []
-  (swap! uid-counter inc))
+  (gensym "AST_NODE_"))
 
 (defn get-uid-path [ast]
   (-> ast
@@ -122,21 +112,6 @@
    :bullet  #"([-+*\u2022\u2023\u2043])(\s+)(.*|$)"
    :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
    :text    #".+"})
-
-(re-matches (:indent patterns) " This Hello")
-(re-matches (:line patterns) "***")
-(re-matches (:bullet patterns) "* Item")
-(re-matches (:grid-table-top patterns) "+--+------+")
-(re-matches (:grid-table-head-sep patterns) "+===+")
-(re-matches (:grid-table-left-side patterns) "+ jj")
-(re-matches (:grid-table-right-side patterns) "+ jj   +  ")
-
-;;(let [[_ style spacing text] (re-matches (:bullet patterns) "*   Hello")
-;;      indent (inc (count spacing))]
-;;  (do
-;;    (println (str "Style: " style))
-;;    (println (str "Indent: " indent))
-;;    (println (str "Text: " text))))
 
 (defn parse [context transition match]
   (-> transition :parse (apply [context match])))
@@ -1274,6 +1249,3 @@
   (let [root-node (create-node {:type :root :children []})
         pos [0 0]]
     (process-lines document-lines root-node pos)))
-
-;;(process-document content-lines)
-

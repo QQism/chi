@@ -34,7 +34,7 @@ Document Body
   + Field lists
   + Option lists
 - Table
-  + Grid table `On-going`
+  + Grid table `Checked`
   + Simple table
 - Explicit markup blocks
   + Footnote

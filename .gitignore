@@ -11,3 +11,7 @@ pom.xml.asc
 .hg/
 .idea/
 .#*
+.cljs_rhino_repl/
+resources/public/js
+node_modules/
+*.iml

@@ -71,10 +71,9 @@
 (defn update-ast [context f & args]
   (update context :ast #(apply f % args)))
 
-(def uid-counter (atom 0))
 
 (defn get-uid []
-  (swap! uid-counter inc))
+  (gensym "AST_NODE_"))
 
 (defn get-uid-path [ast]
   (-> ast

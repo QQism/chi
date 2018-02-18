@@ -40,9 +40,11 @@
    (transform-cond-nodes expected node true)))
 
 (defn assert-node
-  [expected actual]
-  (let [[cond-expected cond-actual] (transform-cond-nodes expected actual)]
-    (t/is (= cond-expected cond-actual))))
+  ([expected actual]
+   (assert-node expected actual nil))
+  ([expected actual msg]
+   (let [[cond-expected cond-actual] (transform-cond-nodes expected actual)]
+     (t/is (= cond-expected cond-actual) msg))))
 
 (defn print-node
   ([node]

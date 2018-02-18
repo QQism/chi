@@ -71,9 +71,10 @@
 (defn update-ast [context f & args]
   (update context :ast #(apply f % args)))
 
+(def ^{:private true :const true} uid-prefix "AST_NODE_")
 
 (defn get-uid []
-  (gensym "AST_NODE_"))
+  (gensym uid-prefix))
 
 (defn get-uid-path [ast]
   (-> ast

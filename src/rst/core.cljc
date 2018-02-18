@@ -84,10 +84,9 @@
       reverse))
 
 (defn up-to-root [ast]
-  (loop [node ast]
-    (if-let [parent (z/up node)]
-      (recur parent)
-      node)))
+  (if-let [parent (z/up ast)]
+    (recur parent)
+    ast))
 
 (defn children-loc [ast]
   (let [children-count (-> ast z/children count)
@@ -693,15 +692,14 @@
   "Extract the text block from the current line
    to the nearest blank line"
   [context]
-  (loop [current-context context]
-    (if-not (eof? current-context)
-      (let [line (current-line current-context)]
-        (if-not (match-transition? :blank line)
-          (recur (-> current-context
-                     (add-to-buffers line)
-                     forward))
-          current-context))
-      current-context)))
+  (if-not (eof? context)
+    (let [line (current-line context)]
+      (if-not (match-transition? :blank line)
+        (recur (-> context
+                   (add-to-buffers line)
+                   forward))
+        context))
+    context))
 
 (defn ^:private backward-buffers [context idx]
   (let [lines (:buffers context)

@@ -38,25 +38,25 @@
   IReadingLines
   (current-line [_] (nth lines current-idx))
   (next-line [_] (nth lines (inc current-idx)))
-  (forward [context] (-> context
-                         (update :current-idx inc)
-                         (update :pos (fn [[row col]] [(inc row) col]))))
+  (forward [this] (-> this
+                      (update :current-idx inc)
+                      (update :pos (fn [[row col]] [(inc row) col]))))
   (backward
-    [context n]
-    (-> context
+    [this n]
+    (-> this
         (update :current-idx #(- % n))
         (update :pos (fn [[row col]] [(- row n) col]))))
   (eof? [_] (>= current-idx (count lines)))
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
   (indented? [_] (> (peek pos) 0))
   IStateManagement
-  (push-state [_ state] (update _ :states conj state))
-  (pop-state [_] (update _ :states pop))
-  (current-state [_] (-> _ :states peek))
-  (add-to-buffers [_ line] (update _ :buffers conj line))
-  (update-buffers [_ lines] (assoc _ :buffers lines))
-  (clear-buffers [_] (update-buffers _ []))
-  (buffers? [_] (-> _ :buffers empty? not)))
+  (push-state [this state] (update this :states conj state))
+  (pop-state [this] (update this :states pop))
+  (current-state [this] (-> this :states peek))
+  (add-to-buffers [this line] (update this :buffers conj line))
+  (update-buffers [this lines] (assoc this :buffers lines))
+  (clear-buffers [this] (update-buffers this []))
+  (buffers? [this] (-> this :buffers empty? not)))
 
 (defn make-context
   [lines ast init-state init-pos]
@@ -68,8 +68,8 @@
                          :buffers []
                          :reported-level (:info error-levels)}))
 
-(defn update-ast [context f & args]
-  (update context :ast #(apply f % args)))
+(defn update-ast [ctx f & args]
+  (update ctx :ast #(apply f % args)))
 
 (def ^{:private true :const true} uid-prefix "AST_NODE_")
 
@@ -113,8 +113,8 @@
    :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
    :text    #".+"})
 
-(defn parse [context transition match]
-  (-> transition :parse (apply [context match])))
+(defn parse [ctx transition match]
+  (-> transition :parse (apply [ctx match])))
 
 (defn match-transition [transition-name line]
   (-> patterns transition-name (re-matches line)))
@@ -411,25 +411,25 @@
   (let [error (create-error-malformed-table lines pos)]
     (append-error ast (error))))
 
-(defn body->blank [context _]
-  (-> context forward))
+(defn body->blank [ctx _]
+  (-> ctx forward))
 
-(defn body->line [context _]
-  (let [line (current-line context)
-        pos (:pos context)
+(defn body->line [ctx _]
+  (let [line (current-line ctx)
+        pos (:pos ctx)
         short-line? (< (count line) 4)]
-    (if (indented? context)
+    (if (indented? ctx)
       (if short-line?
-        (-> context
+        (-> ctx
             forward
             (add-to-buffers line)
             (push-state :text))
-        (-> context
+        (-> ctx
             (update-ast append-error-unexpected-section-title-or-transition
                         pos
                         [line])
             forward))
-      (-> context
+      (-> ctx
           forward
           (add-to-buffers line)
           (push-state :line)))))
@@ -443,51 +443,51 @@
     (append-node ast text)))
 
 (defn body->text
-  [context _]
-  (if-not (eof? context)
-    (let [line (current-line context)]
-      (if-not (eof-on-next? context)
-        (-> context
+  [ctx _]
+  (if-not (eof? ctx)
+    (let [line (current-line ctx)]
+      (if-not (eof-on-next? ctx)
+        (-> ctx
             forward
             (add-to-buffers line)
             (push-state :text))
         ;; next line if EOF
-        (let [text-lines (-> context :buffers (conj line))]
-          (-> context
+        (let [text-lines (-> ctx :buffers (conj line))]
+          (-> ctx
               (update-ast append-paragraph (string/join " " text-lines))
               forward
               clear-buffers))))))
 
-(defn line->blank [context _]
+(defn line->blank [ctx _]
   ;; Check if it is the last line of the document
   ;; - Y: Raise error
   ;; - N: Create a transition
-  (let [{[row col] :pos buffers :buffers} context
+  (let [{[row col] :pos buffers :buffers} ctx
         prev-text-line (peek buffers)
         prev-short-line? (< (count prev-text-line) 4)
         prev-pos [(dec row) col]]
     (if prev-short-line?
-      (-> context
+      (-> ctx
           (update-ast append-paragraph prev-text-line)
           forward
           clear-buffers
           pop-state)
-      (loop [current-context context]
-        (if-not (eof? current-context)
-          (let [line (current-line current-context)]
+      (loop [current-ctx ctx]
+        (if-not (eof? current-ctx)
+          (let [line (current-line current-ctx)]
             (if (match-transition? :blank line)
-              (recur (-> current-context forward))
-              (-> current-context
+              (recur (-> current-ctx forward))
+              (-> current-ctx
                   (update-ast append-transition-line->blank prev-pos)
                   clear-buffers
                   pop-state)))
-          (-> current-context
+          (-> current-ctx
               (update-ast append-transition-line->blank prev-pos)
               (update-ast append-error-doc-end-with-transition prev-pos)
               clear-buffers
               pop-state))))))
 
-(defn line->text [context _]
+(defn line->text [ctx _]
   ;; Read the next line
   ;; If it is a lines
   ;; - Y: Check if overline and underline are matched
@@ -498,33 +498,33 @@
   ;; - N: - If it is a short line
   ;;   - Y: Switch to the text state
   ;;   - N: Create an error
-  (let [{text-lines :buffers [row col] :pos} context
+  (let [{text-lines :buffers [row col] :pos} ctx
         prev-pos [(dec row) col]
-        current-text-line (current-line context)
+        current-text-line (current-line ctx)
         current-text-lines (conj text-lines current-text-line)
         prev-text-line (peek text-lines)
         prev-short-line? (< (count prev-text-line) 4)]
-    (if-not (eof-on-next? context)
-      (let [next-text-line (next-line context)
+    (if-not (eof-on-next? ctx)
+      (let [next-text-line (next-line ctx)
             next-text-lines (conj current-text-lines next-text-line)]
         (if (match-transition? :line next-text-line)
           (if (and (= prev-text-line next-text-line)
                    (or (not prev-short-line?)
                        (<= (count current-text-line) (count prev-text-line))))
-            (-> context
+            (-> ctx
                 (update-ast append-section-line->text-line prev-pos next-text-lines)
                 forward
                 forward
                 clear-buffers
                 pop-state)
             (if prev-short-line?
-              (-> context
+              (-> ctx
                   forward
                   forward
                   (update-buffers next-text-lines)
                   pop-state
                   (push-state :text))
-              (-> context
+              (-> ctx
                   (update-ast append-error-section-mismatching-overline-underline
                               prev-pos
                               next-text-lines)
@@ -533,13 +533,13 @@
                   clear-buffers
                   pop-state)))
           (if prev-short-line?
-            (-> context
+            (-> ctx
                 forward
                 forward
                 (update-buffers next-text-lines)
                 pop-state
                 (push-state :text))
-            (-> context
+            (-> ctx
                 (update-ast append-error-section-mismatching-underline
                             prev-pos
                             next-text-lines)
@@ -548,12 +548,12 @@
                 clear-buffers
                 pop-state))))
       (if prev-short-line?
-        (-> context
+        (-> ctx
             forward
             (add-to-buffers current-text-line)
             pop-state
             (push-state :text))
-        (-> context
+        (-> ctx
             (update-ast append-error-incomplete-section-title
                         prev-pos
                         current-text-lines)
@@ -561,56 +561,56 @@
             clear-buffers
             pop-state)))))
 
-(defn line->line [context _]
+(defn line->line [ctx _]
   ;; Append the error message
   )
 
-(defn text->blank [context _]
-  (let [text-lines (:buffers context)
+(defn text->blank [ctx _]
+  (let [text-lines (:buffers ctx)
         block-text (string/join " " text-lines)]
-    (-> context
+    (-> ctx
         (update-ast append-paragraph block-text)
         forward
         clear-buffers
         pop-state)))
 
-(defn text->text [context _]
+(defn text->text [ctx _]
   ;; Read the whole block of text until the blank line
   ;; keep track the index
-  (loop [current-context context]
-    (if-not (eof? current-context)
-      (let [line (current-line current-context)]
+  (loop [current-ctx ctx]
+    (if-not (eof? current-ctx)
+      (let [line (current-line current-ctx)]
         (cond (match-transition? :blank line)
               ;; blank line, create paragraph & return
-              (let [block-text (string/join " " (:buffers current-context))]
-                (-> current-context
+              (let [block-text (string/join " " (:buffers current-ctx))]
+                (-> current-ctx
                     (update-ast append-paragraph block-text)
                     clear-buffers
                     pop-state))
               (match-transition? :indent line)
-              (let [block-text (string/join " " (:buffers current-context))
-                    pos (:pos current-context)]
-                (-> current-context
+              (let [block-text (string/join " " (:buffers current-ctx))
+                    pos (:pos current-ctx)]
+                (-> current-ctx
                     (update-ast append-paragraph block-text)
                     (update-ast append-error-unexpected-indentation pos)
                     clear-buffers
                     pop-state))
               :else
-              (recur (-> current-context
+              (recur (-> current-ctx
                          forward
                          (add-to-buffers line)))))
       ;; EOF, create paragraph & return
-      (let [block-text (string/join " " (:buffers current-context))]
-        (-> current-context
+      (let [block-text (string/join " " (:buffers current-ctx))]
+        (-> current-ctx
             (update-ast append-paragraph block-text)
             forward
             clear-buffers
             pop-state)))))
 
-(defn text->line [context match]
-  (let [{pos :pos buffers :buffers} context
+(defn text->line [ctx match]
+  (let [{pos :pos buffers :buffers} ctx
         prev-text-line (peek buffers)
-        line (current-line context)
+        line (current-line ctx)
         line-count (count line)
         short-line? (< line-count 4)
         shorter-than-prev? (< line-count (count prev-text-line))
@@ -622,44 +622,42 @@
     ;;   - else
     ;;     | create the section
     (if (and short-line? shorter-than-prev?)
-      (text->text context match)
-      (if (indented? context)
-        (-> context
+      (text->text ctx match)
+      (if (indented? ctx)
+        (-> ctx
             (update-ast append-error-unexpected-section-title pos text-lines)
             forward
             clear-buffers
             pop-state)
-        (-> context
+        (-> ctx
             (update-ast append-section-text->line pos text-lines)
             forward
             clear-buffers
             pop-state)))))
 
-(defn read-indented-lines [context indent]
-  (let [{text-lines :buffers} context
+(defn read-indented-lines [ctx indent]
+  (let [{text-lines :buffers} ctx
         indented-pattern (re-pattern (str " {" indent "}(.*)"))]
     (loop [indented-lines text-lines
-           current-context context]
-      (if-not (eof? current-context)
-        (let [line (current-line current-context)]
+           current-ctx ctx]
+      (if-not (eof? current-ctx)
+        (let [line (current-line current-ctx)]
           (if-let [match (re-matches indented-pattern line)]
-            (recur (conj indented-lines (nth match 1)) (forward current-context))
+            (recur (conj indented-lines (nth match 1)) (forward current-ctx))
             (if (match-transition? :blank line)
-              (recur (conj indented-lines "") (forward current-context))
-              (-> current-context
+              (recur (conj indented-lines "") (forward current-ctx))
+              (-> current-ctx
                   (update-buffers indented-lines)))))
-        (-> current-context
+        (-> current-ctx
             (update-buffers indented-lines))))))
 
-(defn body->indent
-  [context [line indent-str text]]
+(defn body->indent [ctx [line indent-str text]]
   (let [current-indent (count indent-str)
-        pos (:pos context)
-        next-context (read-indented-lines context
-                                          current-indent)
-        eof? (eof? next-context)
-        {next-pos :pos lines :buffers} next-context]
-    (-> next-context
+        pos (:pos ctx)
+        next-ctx (read-indented-lines ctx current-indent)
+        eof? (eof? next-ctx)
+        {next-pos :pos lines :buffers} next-ctx]
+    (-> next-ctx
         (update-ast append-blockquote-body->indent
                     lines
                     current-indent
@@ -671,50 +669,50 @@
         clear-buffers)))
 
 (defn body->bullet
-  [context [_ style spacing text]]
+  [ctx [_ style spacing text]]
   (let [indent (inc (count spacing))
-        pos (:pos context)
-        next-context (read-indented-lines
-                      (-> context
-                          (add-to-buffers text)
-                          forward)
-                      indent)
-        lines (:buffers next-context)]
-    (-> next-context
+        pos (:pos ctx)
+        next-ctx (read-indented-lines
+                  (-> ctx
+                      (add-to-buffers text)
+                      forward)
+                  indent)
+        lines (:buffers next-ctx)]
+    (-> next-ctx
         (update-ast append-bullet-list style)
         (update-ast append-bullet-item lines indent pos)
         clear-buffers
         (push-state :bullet))))
 
-(defn body->enum [context match])
+(defn body->enum [ctx match])
 
 (defn ^:private extract-text-block
   "Extract the text block from the current line
    to the nearest blank line"
-  [context]
-  (if-not (eof? context)
-    (let [line (current-line context)]
+  [ctx]
+  (if-not (eof? ctx)
+    (let [line (current-line ctx)]
       (if-not (match-transition? :blank line)
-        (recur (-> context
+        (recur (-> ctx
                    (add-to-buffers line)
                    forward))
-        context))
-    context))
+        ctx))
+    ctx))
 
-(defn ^:private backward-buffers [context idx]
-  (let [lines (:buffers context)
+(defn ^:private backward-buffers [ctx idx]
+  (let [lines (:buffers ctx)
         end-idx (-> lines count dec)
         offset-idx (- end-idx idx)
         sub-lines (->> lines (split-at (inc idx)) first vec)]
-    (-> context
+    (-> ctx
         (backward offset-idx)
         (update-buffers sub-lines))))
 
 (defn ^:private mark-table-bottom
   "Find the bottom of the table,
    move the context to after that line"
-  [context]
-  (let [lines (:buffers context)
+  [ctx]
+  (let [lines (:buffers ctx)
         c (count lines)
         end-idx (dec c)]
     (if (> c 0)
@@ -722,16 +720,16 @@
         (if (> idx 2)
           (let [line (nth lines idx)]
             (if (match-transition? :grid-table-top line)
-              (backward-buffers context idx)
+              (backward-buffers ctx idx)
               (recur (dec idx))))
-          (backward-buffers context idx)))
-      context)))
+          (backward-buffers ctx idx)))
+      ctx)))
 
 (defn ^:private mark-table-left-edge
   "Check every line of buffers if it belongs to the table
    Stop when it does not and move the context to that line"
-  [context]
-  (let [lines (:buffers context)
+  [ctx]
+  (let [lines (:buffers ctx)
         c (count lines)]
     (if (> c 0)
       (loop [idx 0]
@@ -739,12 +737,12 @@
           (let [line (nth lines idx)]
             (if (match-transition? :grid-table-left-side line)
               (recur (inc idx))
-              (backward-buffers context (dec idx))))
-          context))
-      context)))
+              (backward-buffers ctx (dec idx))))
+          ctx))
+      ctx)))
 
-(defn ^:private validate-table-right-edge [context]
-  (let [lines (:buffers context)
+(defn ^:private validate-table-right-edge [ctx]
+  (let [lines (:buffers ctx)
         width (-> lines first count)
         c (count lines)]
     (if (> c 0)
@@ -754,13 +752,13 @@
             (if (and (= width (count line))
                      (match-transition? :grid-table-right-side line))
               (recur (inc idx))
-              (let [[row col] (:pos context)
+              (let [[row col] (:pos ctx)
                     last-pos [(- row c )col]]
-                (-> context
+                (-> ctx
                     (update-ast append-error-malformed-table last-pos lines)
                     clear-buffers))))
-          context))
-      context)))
+          ctx))
+      ctx)))
 
 (defn ^:private find-grid-table-header-ids [lines]
   (reduce-kv (fn [heads idx line]
@@ -769,8 +767,8 @@
                  heads))
              [] lines))
 
-(defn ^:private extract-table-block [context]
-  (-> context
+(defn ^:private extract-table-block [ctx]
+  (-> ctx
       extract-text-block
       mark-table-left-edge
       mark-table-bottom
@@ -1078,36 +1076,36 @@
                      "); only one allowed.")]
         (z/replace init-table-ast (create-error-malformed-table lines pos msg))))))
 
-(defn isolate-grid-table [context]
-  (let [next-context (extract-table-block context)]
-    next-context))
+(defn isolate-grid-table [ctx]
+  (let [next-ctx (extract-table-block ctx)]
+    next-ctx))
 
 (defn body->grid-table-top
-  [context match]
-  (let [next-context (isolate-grid-table context)
-        {current-idx :current-idx pos :pos buffers :buffers lines :lines} next-context
+  [ctx match]
+  (let [next-ctx (isolate-grid-table ctx)
+        {current-idx :current-idx pos :pos buffers :buffers lines :lines} next-ctx
         [row col] pos
         table-pos [(- row (count buffers)) col]]
-    (cond-> next-context
+    (cond-> next-ctx
       (not-empty buffers) (update-ast scan-table-block buffers table-pos)
       (has-no-end-blank-line? lines current-idx) (update-ast append-error-table-no-end-blank-line pos)
       :true clear-buffers)))
 
 (def body->field-marker {:name :enum,
                          :state :body,
-                         :parse (fn [context match])})
+                         :parse (fn [ctx match])})
 
 (def body->option-marker {:name :enum,
                           :state :body,
-                          :parse (fn [context match])})
+                          :parse (fn [ctx match])})
 
-(defn bullet->blank [context _]
-  (forward context))
+(defn bullet->blank [ctx _]
+  (forward ctx))
 
-(defn ^:private bullet->others [context match transition]
-  (let [lines (:lines context)
-        {current-idx :current-idx pos :pos} context]
-    (-> context
+(defn ^:private bullet->others [ctx match transition]
+  (let [lines (:lines ctx)
+        {current-idx :current-idx pos :pos} ctx]
+    (-> ctx
         pop-state
         (update-ast z/up)
         (update-ast append-applicable-error-bullet-no-end-blank-line
@@ -1116,32 +1114,32 @@
                     lines)
         (transition match))))
 
-(defn bullet->indent [context match]
-  (bullet->others context match body->indent))
+(defn bullet->indent [ctx match]
+  (bullet->others ctx match body->indent))
 
-(defn bullet->text [context match]
-  (bullet->others context match body->text))
+(defn bullet->text [ctx match]
+  (bullet->others ctx match body->text))
 
-(defn bullet->line [context match]
-  (bullet->others context match body->line))
+(defn bullet->line [ctx match]
+  (bullet->others ctx match body->line))
 
 (defn bullet->bullet
-  [context [_ style spacing text]]
-  (let [bullet-list (-> context :ast z/node)
+  [ctx [_ style spacing text]]
+  (let [bullet-list (-> ctx :ast z/node)
         indent (inc (count spacing))
-        next-context (read-indented-lines
-                      (-> context
+        next-ctx (read-indented-lines
+                      (-> ctx
                           (add-to-buffers text)
                           forward)
                       indent)
-        indented-lines (:buffers next-context)
-        {lines :lines idx :current-idx pos :pos} context]
+        indented-lines (:buffers next-ctx)
+        {lines :lines idx :current-idx pos :pos} ctx]
     (if (and (= (:type bullet-list) :bullet-list)
              (= (:style bullet-list) style))
-      (-> next-context
+      (-> next-ctx
           (update-ast append-bullet-item indented-lines indent pos)
           clear-buffers)
-      (-> next-context
+      (-> next-ctx
           (update-ast z/up)
           (update-ast append-applicable-error-bullet-no-end-blank-line
                       pos
@@ -1216,29 +1214,29 @@
 (defn unwrap-single-indented-document
   "If the indented document contains a single paragraph
   unwrap the paragraph content"
-  [context]
-  (if (and (indented? context) (-> context :ast single-paragraph-document?))
-    (update-ast context unwrap-root-paragraph)
-    context))
+  [ctx]
+  (if (and (indented? ctx) (-> ctx :ast single-paragraph-document?))
+    (update-ast ctx unwrap-root-paragraph)
+    ctx))
 
-(defn clean-up-buffers [context]
-  (if (buffers? context)
-    (let [current-state (current-state context)
+(defn clean-up-buffers [ctx]
+  (if (buffers? ctx)
+    (let [current-state (current-state ctx)
           [transition match] (next-transition current-state "")]
-      (parse context transition match))
-    context))
+      (parse ctx transition match))
+    ctx))
 
 (defn process-lines [lines node pos]
   (let [init-ast (zip-node node)
-        init-context (make-context lines init-ast :body pos)]
-    (loop [context init-context]
-      (if-not (eof? context)
-        (let [line (current-line context)
-              current-state (current-state context)
+        init-ctx (make-context lines init-ast :body pos)]
+    (loop [ctx init-ctx]
+      (if-not (eof? ctx)
+        (let [line (current-line ctx)
+              current-state (current-state ctx)
               [transition match] (next-transition current-state line)
-              new-context (parse context transition match)]
-          (recur new-context))
-        (-> context
+              new-ctx (parse ctx transition match)]
+          (recur new-ctx))
+        (-> ctx
             clean-up-buffers
             unwrap-single-indented-document
             :ast

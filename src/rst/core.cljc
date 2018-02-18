@@ -41,11 +41,9 @@
   (forward [this] (-> this
                       (update :current-idx inc)
                       (update :pos (fn [[row col]] [(inc row) col]))))
-  (backward
-    [this n]
-    (-> this
-        (update :current-idx #(- % n))
-        (update :pos (fn [[row col]] [(- row n) col]))))
+  (backward [this n] (-> this
+                         (update :current-idx #(- % n))
+                         (update :pos (fn [[row col]] [(- row n) col]))))
   (eof? [_] (>= current-idx (count lines)))
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
   (indented? [_] (> (peek pos) 0))
@@ -1128,10 +1126,10 @@
   (let [bullet-list (-> ctx :ast z/node)
         indent (inc (count spacing))
         next-ctx (read-indented-lines
-                      (-> ctx
-                          (add-to-buffers text)
-                          forward)
-                      indent)
+                  (-> ctx
+                      (add-to-buffers text)
+                      forward)
+                  indent)
         indented-lines (:buffers next-ctx)
         {lines :lines idx :current-idx pos :pos} ctx]
     (if (and (= (:type bullet-list) :bullet-list)

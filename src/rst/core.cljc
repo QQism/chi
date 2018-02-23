@@ -6,6 +6,8 @@
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])
+(defn ^:declared next-transition [state line])
+(defn ^:declared parse [ctx transition match])
 
 (def error-levels {:debug    0
                    :info     1
@@ -25,6 +27,7 @@
   (indented? [_]))
 
 (defprotocol IStateManagement
+  (transit [_] [_ line])
   (push-state [_ state])
   (pop-state [_])
   (current-state [_])
@@ -48,6 +51,12 @@
   (eof-on-next? [_] (>= (inc current-idx) (count lines)))
   (indented? [_] (> (peek pos) 0))
   IStateManagement
+  (transit [this] (transit this (current-line this)))
+  (transit [this line]
+    ;; TODO get the current state, get the correct transition and match according to the line
+    (let [state (current-state this)
+          [transition match] (next-transition state line)]
+      (parse this transition match)))
   (push-state [this state] (update this :states conj state))
   (pop-state [this] (update this :states pop))
   (current-state [this] (-> this :states peek))
@@ -1219,21 +1228,19 @@
 
 (defn clean-up-buffers [ctx]
   (if (buffers? ctx)
-    (let [current-state (current-state ctx)
-          [transition match] (next-transition current-state "")]
-      (parse ctx transition match))
+    (transit ctx "")
     ctx))
+
+;; Input: ctx string -> new-ctx
+;; Input: ctx transition match (derived from string) -> new-ctx
+;; Context Function
 
 (defn process-lines [lines node pos]
   (let [init-ast (zip-node node)
         init-ctx (make-context lines init-ast :body pos)]
     (loop [ctx init-ctx]
       (if-not (eof? ctx)
-        (let [line (current-line ctx)
-              current-state (current-state ctx)
-              [transition match] (next-transition current-state line)
-              new-ctx (parse ctx transition match)]
-          (recur new-ctx))
+        (recur (transit ctx))
         (-> ctx
             clean-up-buffers
             unwrap-single-indented-document

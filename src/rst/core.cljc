@@ -2,12 +2,13 @@
   (:require [clojure.string :as string]
             [clojure.pprint :refer [pprint]]
             [clojure.zip :as z]
-            [clojure.set :as set]))
+            [clojure.set :as set]
+            [rst.node :as n]
+            [rst.error :as err]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])
 (defn ^:declared next-transition [state line])
-(defn ^:declared parse [ctx transition match])
 
 (def error-levels {:debug    0
                    :info     1
@@ -35,7 +36,7 @@
   (buffers? [_]))
 
 (defrecord DocumentContext
-    [ast lines current-idx states transition pos buffers reported-level]
+    [zt lines current-idx states transition pos buffers reported-level]
   IReadingLines
   (current-line [_] (nth lines current-idx))
   (next-line [_] (nth lines (inc current-idx)))
@@ -64,38 +65,33 @@
   (buffers? [this] (-> this :buffers empty? not)))
 
 (defn make-context
-  [lines ast init-state init-pos]
-  (map->DocumentContext {:ast ast
+  [lines zt init-state init-pos]
+  (map->DocumentContext {:zt zt
                          :lines lines
                          :pos init-pos
                          :current-idx 0
                          :states [init-state]
                          :buffers []
-                         :reported-level (:info error-levels)}))
+                         :reported-level (:info err/levels)}))
 
-(defn update-ast [ctx f & args]
-  (update ctx :ast #(apply f % args)))
+(defn update-zt [ctx f & args]
+  (update ctx :zt #(apply f % args)))
 
-(def ^{:private true :const true} uid-prefix "AST_NODE_")
-
-(defn get-uid []
-  (gensym uid-prefix))
-
-(defn get-uid-path [ast]
-  (-> ast
+(defn get-uid-path [zt]
+  (-> zt
       z/path
       (->> (map :uid))
-      (conj (:uid (z/node ast)))
+      (conj (:uid (z/node zt)))
       reverse))
 
-(defn up-to-root [ast]
-  (if-let [parent (z/up ast)]
+(defn up-to-root [zt]
+  (if-let [parent (z/up zt)]
     (recur parent)
-    ast))
+    zt))
 
-(defn children-loc [ast]
-  (let [children-count (-> ast z/children count)
-        first-child (z/down ast)]
+(defn children-loc [zt]
+  (let [children-count (-> zt z/children count)
+        first-child (z/down zt)]
     (take children-count (iterate z/right first-child))))
 
 (def non-alphanum-7-bit #"([\!-\/\:-\@\[-\`\{-\~])")
@@ -125,98 +121,95 @@
   (-> (match-transition transition-name line)
       nil? not))
 
-(defn create-node [n]
-  (merge {:uid (get-uid)} n))
-
 (defn create-preserve [text]
-  (create-node {:type :preserve :value text}))
+  (n/create {:type :preserve :value text}))
 
 (defn create-inline-markup-text [text]
   ;; TODO: parse the text into an vector of text
   ;; if there are inline-markups, parse them accordingly
-  [(create-node {:type :text
-                 :value (string/trimr text)})])
+  [(n/create {:type :text
+              :value (string/trimr text)})])
 
 (defn create-header [text line]
-  (create-node {:type :header
-                :children (create-inline-markup-text text)}))
+  (n/create {:type :header
+             :children (create-inline-markup-text text)}))
 
 (defn create-section [text line style]
   (let [adornment (first line)]
-    (create-node {:type :section
-                  :style (str style adornment)
-                  :name (normalize-section-name text)
-                  :children [(create-header text line)]})))
+    (n/create {:type :section
+               :style (str style adornment)
+               :name (normalize-section-name text)
+               :children [(create-header text line)]})))
 
 (defn create-paragraph [text]
-  (create-node {:type :paragraph
-                :children (create-inline-markup-text text)}))
+  (n/create {:type :paragraph
+             :children (create-inline-markup-text text)}))
 
 (defn create-transition []
-  (create-node {:type :transition}))
+  (n/create {:type :transition}))
 
 (defn create-error
   ([description level pos]
-   (create-node {:type :error
-                 :level (level error-levels)
-                 :pos (->> pos (map inc) vec)
-                 :children [(create-paragraph description)]}))
+   (n/create {:type :error
+              :level (level err/levels)
+              :pos (->> pos (map inc) vec)
+              :children [(create-paragraph description)]}))
   ([description level pos block-text]
-   (create-node {:type :error
-                 :level (level error-levels)
-                 :pos (->> pos (map inc) vec)
-                 :children [(create-paragraph description)
-                            (create-preserve block-text)]})))
+   (n/create {:type :error
+              :level (level err/levels)
+              :pos (->> pos (map inc) vec)
+              :children [(create-paragraph description)
+                         (create-preserve block-text)]})))
 
 (defn create-blockquote [indent]
-  (create-node {:type :blockquote
-                :indent indent
-                :children []}))
+  (n/create {:type :blockquote
+             :indent indent
+             :children []}))
 
 (defn create-bullet-list [style]
-  (create-node {:type :bullet-list
-                :style style
-                :children []}))
+  (n/create {:type :bullet-list
+             :style style
+             :children []}))
 
 (defn create-bullet-item [indent]
-  (create-node {:type :bullet-item
-                :indent indent
-                :children []}))
+  (n/create {:type :bullet-item
+             :indent indent
+             :children []}))
 
-(defn append-node [ast node]
-  (-> ast (z/append-child node)))
+(defn append-node [zt node]
+  (-> zt (z/append-child node)))
 
-(defn append-error [ast error]
-  (append-node ast error))
+(defn append-error [zt error]
+  (append-node zt error))
 
-(defn move-to-latest-child [ast]
-  (-> ast z/down z/rightmost))
+(defn move-to-latest-child [zt]
+  (-> zt z/down z/rightmost))
 
-(defn append-section [ast section]
+(defn append-section [zt section]
   ;; Append the section as the new child of the current node location
   ;; Move the location to the position of the new child
-  (-> ast
+  (-> zt
       (append-node section)
       move-to-latest-child))
 
-(defn append-transition [ast transition]
-  (append-node ast transition))
+(defn append-transition [zt transition]
+  (append-node zt transition))
 
-(defn find-loc-with-uid [ast child-uid]
-  (if (-> ast z/node :uid (= child-uid))
-    ast
+(defn find-loc-with-uid [zt child-uid]
+  (if (-> zt z/node :uid (= child-uid))
+    zt
     (some #(if (-> % z/node :uid (= child-uid)) %)
-          (children-loc ast))))
+          (children-loc zt))))
 
 ;; TODO: add the current loc id to path
-(defn find-matching-section-loc [ast style]
+(defn find-matching-section-loc [zt style]
   ;; Travel in the whole doc from top to the current path
   ;; - if there is a section having the same style as the new section
   ;;   | return the location
   ;; - else
   ;;   | return nil
-  (let [current-uid-path (get-uid-path ast)]
-    (loop [current-loc (up-to-root ast)
+  (let [current-uid-path (get-uid-path zt)]
+    (loop [current-loc (up-to-root zt)
            depth 0]
       (if (< depth (count current-uid-path))
         (let [current-uid (nth current-uid-path depth)]
@@ -226,49 +219,49 @@
                 current-loc
                 (recur section-loc (inc depth))))))))))
 
-(defn append-section-in-matched-location [ast section]
+(defn append-section-in-matched-location [zt section]
   ;; Find the matching parent section location
   ;; Append the new section as a child of the current path
   (let [style (:style section)]
-    (if-let [matched-parent-section (find-matching-section-loc ast style)]
+    (if-let [matched-parent-section (find-matching-section-loc zt style)]
       (append-section matched-parent-section section)
-      (append-section ast section))))
+      (append-section zt section))))
 
-(defn append-error-section-title-too-short [ast pos style text-lines]
+(defn append-error-section-title-too-short [zt pos style text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg (str "Title " style " too short.")
-        error (create-error msg :warning pos block-text)]
-    (append-error ast error)))
+        error (create-error msg ::err/warning pos block-text)]
+    (append-error zt error)))
 
-(defn append-error-section-mismatching-underline [ast pos text-lines]
+(defn append-error-section-mismatching-underline [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Missing matching underline for section title overline."
-        error (create-error msg :severe pos block-text)]
-    (append-error ast error)))
+        error (create-error msg ::err/severe pos block-text)]
+    (append-error zt error)))
 
-(defn append-error-section-mismatching-overline-underline [ast pos text-lines]
+(defn append-error-section-mismatching-overline-underline [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Title overline & underline mismatch."
-        error (create-error msg :severe pos block-text)]
-    (append-error ast error)))
+        error (create-error msg ::err/severe pos block-text)]
+    (append-error zt error)))
 
-(defn append-error-incomplete-section-title [ast pos text-lines]
+(defn append-error-incomplete-section-title [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Incomplete section title."
-        error (create-error msg :severe pos block-text)]
-    (append-error ast error)))
+        error (create-error msg ::err/severe pos block-text)]
+    (append-error zt error)))
 
-(defn append-error-unexpected-section-title [ast pos text-lines]
+(defn append-error-unexpected-section-title [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Unexpected section title."
-        error (create-error msg :severe pos block-text)]
-    (append-error ast error)))
+        error (create-error msg ::err/severe pos block-text)]
+    (append-error zt error)))
 
-(defn append-error-unexpected-section-title-or-transition [ast pos text-lines]
+(defn append-error-unexpected-section-title-or-transition [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Unexpected section title or transition."
-        error (create-error msg :severe pos block-text)]
-    (append-error ast error)))
+        error (create-error msg ::err/severe pos block-text)]
+    (append-error zt error)))
 
 (defn is-section-title-short? [style text-lines]
   (case style
@@ -280,138 +273,138 @@
       (< (count overline) (count text)))
     false))
 
-(defn append-applicable-error-section-title-too-short [ast pos style text-lines]
+(defn append-applicable-error-section-title-too-short [zt pos style text-lines]
   (if (is-section-title-short? style text-lines)
-    (append-error-section-title-too-short ast pos style text-lines)
-    ast))
+    (append-error-section-title-too-short zt pos style text-lines)
+    zt))
 
-(defn append-section-line->text-line [ast pos text-lines]
+(defn append-section-line->text-line [zt pos text-lines]
   (let [[overline text _] text-lines
         section-style "overline"
         new-section (create-section text overline section-style)]
-    (-> ast (append-section-in-matched-location new-section)
+    (-> zt (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short pos
                                                          section-style
                                                          text-lines))))
 
-(defn append-section-text->line [ast pos text-lines]
+(defn append-section-text->line [zt pos text-lines]
   (let [[text underline] text-lines
         section-style "underline"
         new-section (create-section text underline section-style)]
-    (-> ast
+    (-> zt
         (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short pos
                                                          section-style
                                                          text-lines))))
 
-(defn document-begin? [ast]
-  (let [siblings (z/children ast)
+(defn document-begin? [zt]
+  (let [siblings (z/children zt)
         siblings-count (count siblings)]
     (or (= siblings-count 0)
         (and (= siblings-count 1)
              (-> siblings first :type (= :header))))))
 
-(defn last-sibling-transition? [ast]
-  (-> ast z/down z/rightmost z/node :type (= :transition)))
+(defn last-sibling-transition? [zt]
+  (-> zt z/down z/rightmost z/node :type (= :transition)))
 
-(defn append-applicable-error-doc-start-with-transition [ast pos]
-  (if (document-begin? ast)
+(defn append-applicable-error-doc-start-with-transition [zt pos]
+  (if (document-begin? zt)
     (let [msg "Document or section may not begin with a transition."
-          error (create-error msg :error pos)]
-      (append-error ast error))
-    ast))
+          error (create-error msg ::err/error pos)]
+      (append-error zt error))
+    zt))
 
-(defn append-applicable-error-adjacent-transitions [ast pos]
-  (if (last-sibling-transition? ast)
+(defn append-applicable-error-adjacent-transitions [zt pos]
+  (if (last-sibling-transition? zt)
     (let [msg "At least one body element must separate transitions; adjacent transitions are not allowed."
-          error (create-error msg :error pos)]
-      (append-error ast error))
-    ast))
+          error (create-error msg ::err/error pos)]
+      (append-error zt error))
+    zt))
 
-(defn append-error-doc-end-with-transition [ast pos]
+(defn append-error-doc-end-with-transition [zt pos]
   (let [msg "Document may not end with a transition."
-        error (create-error msg :error pos)]
-    (append-error ast error)))
+        error (create-error msg ::err/error pos)]
+    (append-error zt error)))
 
-(defn append-transition-line->blank [ast pos]
+(defn append-transition-line->blank [zt pos]
   (let [transition (create-transition)]
-    (-> ast
+    (-> zt
         (append-applicable-error-doc-start-with-transition pos)
         (append-applicable-error-adjacent-transitions pos)
         (append-transition transition))))
 
-(defn append-applicable-error-blockquote-no-end-blank-line [ast pos lines eof?]
+(defn append-applicable-error-blockquote-no-end-blank-line [zt pos lines eof?]
   (if-not (or (match-transition? :blank (peek lines)) eof?)
     (let [msg "Block quote ends without a blank line; unexpected unindent."
-          error (create-error msg :warning pos)]
-      (append-error ast error))
-    ast))
+          error (create-error msg ::err/warning pos)]
+      (append-error zt error))
+    zt))
 
-(defn append-applicable-error-bullet-no-end-blank-line [ast pos idx lines]
+(defn append-applicable-error-bullet-no-end-blank-line [zt pos idx lines]
   (if (> idx 0)
     (let [prev-line (nth lines (dec idx))]
       (if (match-transition? :blank prev-line)
-        ast
+        zt
         (let [msg "Bullet list ends without a blank line; unexpected unindent."
-              error (create-error msg :warning pos)]
-          (append-error ast error))))
-    ast))
+              error (create-error msg ::err/warning pos)]
+          (append-error zt error))))
+    zt))
 
 (defn has-no-end-blank-line? [lines idx]
   (let [current-line (nth lines idx :eof)]
     (not (or (= current-line :eof) (match-transition? :blank current-line)))))
 
-(defn append-error-table-no-end-blank-line [ast pos]
+(defn append-error-table-no-end-blank-line [zt pos]
   (let [msg "Blank line required after table."
         [row col] pos
         prev-pos [(dec row) col]
-        error (create-error msg :warning prev-pos)]
-    (append-error ast error)))
+        error (create-error msg ::err/warning prev-pos)]
+    (append-error zt error)))
 
-(defn append-error-unexpected-indentation [ast pos]
+(defn append-error-unexpected-indentation [zt pos]
   (let [msg "Unexpected indentation."
-        error (create-error msg :error pos)]
-    (append-error ast error)))
+        error (create-error msg ::err/error pos)]
+    (append-error zt error)))
 
-(defn append-blockquote-body->indent [ast lines indent pos]
+(defn append-blockquote-body->indent [zt lines indent pos]
   (let [[row col] pos
         raw-indent (+ indent col)
         blockquote (create-blockquote raw-indent)
         new-pos [row raw-indent]
         processed-blockquote (process-lines lines blockquote new-pos)]
-    (-> ast
+    (-> zt
         (append-node processed-blockquote))))
 
-(defn append-bullet-list [ast style]
+(defn append-bullet-list [zt style]
   (let [bullet-list (create-bullet-list style)]
-    (-> ast
+    (-> zt
         (append-node bullet-list)
         move-to-latest-child)))
 
-(defn append-bullet-item [ast lines indent pos]
+(defn append-bullet-item [zt lines indent pos]
   (let [[row col] pos
         raw-indent (+ col indent)
         bullet-item (create-bullet-item raw-indent)
         new-pos [row raw-indent]
         processed-bullet-item (process-lines lines bullet-item new-pos)]
-    (-> ast (append-node processed-bullet-item))))
+    (-> zt (append-node processed-bullet-item))))
 
-(defn append-preserve-text [ast lines]
+(defn append-preserve-text [zt lines]
   (let [block-text (string/join "\r\n" lines)
         preserve-text (create-preserve block-text)]
-    (-> ast (append-node preserve-text))))
+    (-> zt (append-node preserve-text))))
 
 (defn create-error-malformed-table
   ([lines pos description]
    (let [block-text (string/join "\r\n" lines)
          msg (string/join " " ["Malformed table." description])]
-     (create-error (string/trimr msg) :error pos block-text)))
+     (create-error (string/trimr msg) ::err/error pos block-text)))
   ([lines pos]
    (create-error-malformed-table lines pos "")))
 
-(defn append-error-malformed-table [ast pos lines]
+(defn append-error-malformed-table [zt pos lines]
   (let [error (create-error-malformed-table lines pos)]
-    (append-error ast (error))))
+    (append-error zt (error))))
 
 (defn body->blank [ctx _]
   (-> ctx forward))
@@ -427,22 +420,22 @@
             (add-to-buffers line)
             (push-state :text))
         (-> ctx
-            (update-ast append-error-unexpected-section-title-or-transition
-                        pos
-                        [line])
+            (update-zt append-error-unexpected-section-title-or-transition
+                       pos
+                       [line])
             forward))
       (-> ctx
           forward
           (add-to-buffers line)
           (push-state :line)))))
 
-(defn append-paragraph [ast block-text]
+(defn append-paragraph [zt block-text]
   (let [paragraph (create-paragraph block-text)]
-    (append-node ast paragraph)))
+    (append-node zt paragraph)))
 
-(defn anppend-text [ast text]
+(defn anppend-text [zt text]
   (let [text (create-inline-markup-text text)]
-    (append-node ast text)))
+    (append-node zt text)))
 
 (defn body->text
   [ctx _]
@@ -456,7 +449,7 @@
         ;; next line if EOF
         (let [text-lines (-> ctx :buffers (conj line))]
           (-> ctx
-              (update-ast append-paragraph (string/join " " text-lines))
+              (update-zt append-paragraph (string/join " " text-lines))
               forward
               clear-buffers))))))
 
@@ -470,7 +463,7 @@
         prev-pos [(dec row) col]]
     (if prev-short-line?
       (-> ctx
-          (update-ast append-paragraph prev-text-line)
+          (update-zt append-paragraph prev-text-line)
           forward
           clear-buffers
           pop-state)
@@ -480,12 +473,12 @@
             (if (match-transition? :blank line)
               (recur (-> current-ctx forward))
               (-> current-ctx
-                  (update-ast append-transition-line->blank prev-pos)
+                  (update-zt append-transition-line->blank prev-pos)
                   clear-buffers
                   pop-state)))
           (-> current-ctx
-              (update-ast append-transition-line->blank prev-pos)
-              (update-ast append-error-doc-end-with-transition prev-pos)
+              (update-zt append-transition-line->blank prev-pos)
+              (update-zt append-error-doc-end-with-transition prev-pos)
               clear-buffers
               pop-state))))))
 
@@ -514,7 +507,7 @@
                    (or (not prev-short-line?)
                        (<= (count current-text-line) (count prev-text-line))))
             (-> ctx
-                (update-ast append-section-line->text-line prev-pos next-text-lines)
+                (update-zt append-section-line->text-line prev-pos next-text-lines)
                 forward
                 forward
                 clear-buffers
@@ -527,9 +520,9 @@
                   pop-state
                   (push-state :text))
               (-> ctx
-                  (update-ast append-error-section-mismatching-overline-underline
-                              prev-pos
-                              next-text-lines)
+                  (update-zt append-error-section-mismatching-overline-underline
+                             prev-pos
+                             next-text-lines)
                   forward
                   forward
                   clear-buffers
@@ -542,9 +535,9 @@
                 pop-state
                 (push-state :text))
             (-> ctx
-                (update-ast append-error-section-mismatching-underline
-                            prev-pos
-                            next-text-lines)
+                (update-zt append-error-section-mismatching-underline
+                           prev-pos
+                           next-text-lines)
                 forward
                 forward
                 clear-buffers
@@ -556,9 +549,9 @@
             pop-state
             (push-state :text))
         (-> ctx
-            (update-ast append-error-incomplete-section-title
-                        prev-pos
-                        current-text-lines)
+            (update-zt append-error-incomplete-section-title
+                       prev-pos
+                       current-text-lines)
             forward
             clear-buffers
             pop-state)))))
@@ -571,7 +564,7 @@
   (let [text-lines (:buffers ctx)
         block-text (string/join " " text-lines)]
     (-> ctx
-        (update-ast append-paragraph block-text)
+        (update-zt append-paragraph block-text)
         forward
         clear-buffers
         pop-state)))
@@ -586,15 +579,15 @@
               ;; blank line, create paragraph & return
               (let [block-text (string/join " " (:buffers current-ctx))]
                 (-> current-ctx
-                    (update-ast append-paragraph block-text)
+                    (update-zt append-paragraph block-text)
                     clear-buffers
                     pop-state))
               (match-transition? :indent line)
               (let [block-text (string/join " " (:buffers current-ctx))
                     pos (:pos current-ctx)]
                 (-> current-ctx
-                    (update-ast append-paragraph block-text)
-                    (update-ast append-error-unexpected-indentation pos)
+                    (update-zt append-paragraph block-text)
+                    (update-zt append-error-unexpected-indentation pos)
                     clear-buffers
                     pop-state))
               :else
@@ -604,7 +597,7 @@
       ;; EOF, create paragraph & return
       (let [block-text (string/join " " (:buffers current-ctx))]
         (-> current-ctx
-            (update-ast append-paragraph block-text)
+            (update-zt append-paragraph block-text)
             forward
             clear-buffers
             pop-state)))))
@@ -627,12 +620,12 @@
       (text->text ctx match)
       (if (indented? ctx)
         (-> ctx
-            (update-ast append-error-unexpected-section-title pos text-lines)
+            (update-zt append-error-unexpected-section-title pos text-lines)
             forward
             clear-buffers
             pop-state)
         (-> ctx
-            (update-ast append-section-text->line pos text-lines)
+            (update-zt append-section-text->line pos text-lines)
             forward
             clear-buffers
             pop-state)))))
@@ -660,14 +653,14 @@
         eof? (eof? next-ctx)
         {next-pos :pos lines :buffers} next-ctx]
     (-> next-ctx
-        (update-ast append-blockquote-body->indent
-                    lines
-                    current-indent
-                    pos)
-        (update-ast append-applicable-error-blockquote-no-end-blank-line
-                    next-pos
-                    lines
-                    eof?)
+        (update-zt append-blockquote-body->indent
+                   lines
+                   current-indent
+                   pos)
+        (update-zt append-applicable-error-blockquote-no-end-blank-line
+                   next-pos
+                   lines
+                   eof?)
         clear-buffers)))
 
 (defn body->bullet
@@ -681,8 +674,8 @@
                   indent)
         lines (:buffers next-ctx)]
     (-> next-ctx
-        (update-ast append-bullet-list style)
-        (update-ast append-bullet-item lines indent pos)
+        (update-zt append-bullet-list style)
+        (update-zt append-bullet-item lines indent pos)
         clear-buffers
         (push-state :bullet))))
 
@@ -757,7 +750,7 @@
               (let [[row col] (:pos ctx)
                     last-pos [(- row c )col]]
                 (-> ctx
-                    (update-ast append-error-malformed-table last-pos lines)
+                    (update-zt append-error-malformed-table last-pos lines)
                     clear-buffers))))
           ctx))
       ctx)))
@@ -819,76 +812,76 @@
             [] rows)))
 
 (defn create-table-cell [[top left bottom right] content [file-row file-col]]
-  (let [cell (create-node {:type :cell
-                           :top top
-                           :left left
-                           :width (- right left 1)
-                           :height (- bottom top 1)
-                           :children []})
+  (let [cell (n/create {:type :cell
+                        :top top
+                        :left left
+                        :width (- right left 1)
+                        :height (- bottom top 1)
+                        :children []})
         trivial-indents (trivial-block-indents content)
         stripped-content (strip-indents content trivial-indents)
         pos [(+ file-row top 1) (+ left file-col 1)]]
     (process-lines stripped-content cell pos)))
 
 (defn create-table-row [id]
-  (create-node {:type :row :id id :children []}))
+  (n/create {:type :row :id id :children []}))
 
 (defn create-table-header []
-  (create-node {:type :table-header :children []}))
+  (n/create {:type :table-header :children []}))
 
 (defn create-table-body []
-  (create-node {:type :table-body :children [(create-table-row 0)]}))
+  (n/create {:type :table-body :children [(create-table-row 0)]}))
 
 (defn create-grid-table [width height pos]
-  (create-node {:type :table
-                :style :grid
-                :pos pos
-                :width width
-                :height height
-                :col-ids (sorted-set 0)
-                :header-idx nil
-                :children [(create-table-body)]}))
+  (n/create {:type :table
+             :style :grid
+             :pos pos
+             :width width
+             :height height
+             :col-ids (sorted-set 0)
+             :header-idx nil
+             :children [(create-table-body)]}))
 
-(defn move-to-table-body [ast]
-  (if (-> ast z/node :type (= :table))
-    (loop [table-child (-> ast z/down)]
+(defn move-to-table-body [zt]
+  (if (-> zt z/node :type (= :table))
+    (loop [table-child (-> zt z/down)]
       (cond (-> table-child z/node :type (= :table-body)) table-child
             (nil? table-child) nil
             :else (recur (z/right table-child))))
     nil))
 
-(defn move-to-table-header [ast]
-  (if (-> ast z/node :type (= :table))
-    (loop [table-child (-> ast z/down)]
+(defn move-to-table-header [zt]
+  (if (-> zt z/node :type (= :table))
+    (loop [table-child (-> zt z/down)]
       (cond (-> table-child z/node :type (= :table-header)) table-child
             (nil? table-child) nil
             :else (recur (z/right table-child))))
     nil))
 
-(defn move-to-body-row [ast id]
-  (let [table-body-ast (move-to-table-body ast)]
-    (loop [row-ast (z/down table-body-ast)]
-      (if-not (nil? row-ast)
-        (if (-> row-ast z/node :id (= id))
-          row-ast
-          (recur (z/right row-ast)))
+(defn move-to-body-row [zt id]
+  (let [table-body-zt (move-to-table-body zt)]
+    (loop [row-zt (z/down table-body-zt)]
+      (if-not (nil? row-zt)
+        (if (-> row-zt z/node :id (= id))
+          row-zt
+          (recur (z/right row-zt)))
         nil))))
 
-(defn append-table-body-row [ast row-id]
-  (let [table (z/node ast)
+(defn append-table-body-row [zt row-id]
+  (let [table (z/node zt)
         height (:height table)]
     (if (< row-id (dec height))
       (let [row (create-table-row row-id)
-            existing-row (move-to-body-row ast row-id)]
+            existing-row (move-to-body-row zt row-id)]
         (if (nil? existing-row)
-          (let [table-body (move-to-table-body ast)]
+          (let [table-body (move-to-table-body zt)]
             (-> table-body (append-node row)
                 z/up))
-          ast))
-      ast)))
+          zt))
+      zt)))
 
-(defn append-table-col-id [ast col-id]
-  (z/edit ast
+(defn append-table-col-id [zt col-id]
+  (z/edit zt
           (fn [table]
             (let [col-ids (:col-ids table)
                   width (:width table)]
@@ -896,96 +889,96 @@
                 (update table :col-ids #(conj %1 col-id))
                 table)))))
 
-(defn append-table-body-cell [ast cell]
+(defn append-table-body-cell [zt cell]
   (let [row-id (:top cell)
-        row-ast (move-to-body-row ast row-id)]
-    (-> row-ast (append-node cell)
+        row-zt (move-to-body-row zt row-id)]
+    (-> row-zt (append-node cell)
         z/up z/up)))
 
-(defn ^:private scan-up [ast lines top left bottom right]
-  (loop [table-ast ast
+(defn ^:private scan-up [zt lines top left bottom right]
+  (loop [table-zt zt
          row-id (dec bottom)]
     (if-not (< row-id top)
       (let [c (nth-2d lines row-id left)]
         (cond (> row-id top) (case c
-                               \+ (recur (append-table-body-row ast row-id) (dec row-id))
-                               \| (recur table-ast (dec row-id))
-                               [table-ast nil])
+                               \+ (recur (append-table-body-row zt row-id) (dec row-id))
+                               \| (recur table-zt (dec row-id))
+                               [table-zt nil])
               (= row-id top) (if (= c \+)
-                               [table-ast [top left bottom right]]
-                               [table-ast nil])
-              :else [table-ast nil]))
-      [table-ast nil])))
+                               [table-zt [top left bottom right]]
+                               [table-zt nil])
+              :else [table-zt nil]))
+      [table-zt nil])))
 
-(defn ^:private scan-left [ast lines top left bottom right]
-  (loop [table-ast ast
+(defn ^:private scan-left [zt lines top left bottom right]
+  (loop [table-zt zt
          col-id (dec right)]
     (if-not (< col-id left)
       (let [c (nth-2d lines bottom col-id)]
         (cond (> col-id left) (case c
-                                \+ (recur (append-table-col-id ast col-id) (dec col-id))
-                                \- (recur table-ast (dec col-id))
-                                [table-ast nil])
+                                \+ (recur (append-table-col-id zt col-id) (dec col-id))
+                                \- (recur table-zt (dec col-id))
+                                [table-zt nil])
               (= col-id left) (if (= c \+)
-                                (scan-up table-ast lines top left bottom right)
-                                [table-ast nil])
-              :else [table-ast nil]))
-      [table-ast nil])))
+                                (scan-up table-zt lines top left bottom right)
+                                [table-zt nil])
+              :else [table-zt nil]))
+      [table-zt nil])))
 
-(defn ^:private scan-down [ast lines top left right]
-  (let [table (z/node ast)
+(defn ^:private scan-down [zt lines top left right]
+  (let [table (z/node zt)
         height (:height table)]
-    (loop [table-ast ast
+    (loop [table-zt zt
            row-id (inc top)]
       (if (< row-id height)
         (let [c (nth-2d lines row-id right)]
           (case c
-            \+ (let [[next-table-ast cell-pos] (-> ast (append-table-body-row row-id)
-                                                   (scan-left lines top left row-id right))]
+            \+ (let [[next-table-zt cell-pos] (-> zt (append-table-body-row row-id)
+                                                  (scan-left lines top left row-id right))]
                  (if-not cell-pos
-                   (recur next-table-ast (inc row-id))
-                   [next-table-ast cell-pos]))
-            \| (recur table-ast (inc row-id))
-            [ast nil]))
-        [ast nil]))))
+                   (recur next-table-zt (inc row-id))
+                   [next-table-zt cell-pos]))
+            \| (recur table-zt (inc row-id))
+            [zt nil]))
+        [zt nil]))))
 
-(defn ^:private scan-right [ast lines top left]
-  (let [table (z/node ast)
+(defn ^:private scan-right [zt lines top left]
+  (let [table (z/node zt)
         width (:width table)]
-    (loop [table-ast ast
+    (loop [table-zt zt
            col-id (inc left)]
       (if (< col-id width)
         (let [c (nth-2d lines top col-id)]
           (case c
-            \+ (let [[next-table-ast cell-pos] (-> ast (append-table-col-id col-id)
-                                                   (scan-down lines top left col-id))]
+            \+ (let [[next-table-zt cell-pos] (-> zt (append-table-col-id col-id)
+                                                  (scan-down lines top left col-id))]
                  (if-not cell-pos
-                   (recur next-table-ast (inc col-id))
-                   [next-table-ast cell-pos]))
-            \- (recur table-ast (inc col-id))
-            [ast nil]))
-        [ast nil]))))
+                   (recur next-table-zt (inc col-id))
+                   [next-table-zt cell-pos]))
+            \- (recur table-zt (inc col-id))
+            [zt nil]))
+        [zt nil]))))
 
 (defn ^:private valid-top-left-cell-corner? [[top left] [width height]]
   (and (not= top (dec height)) (not= left (dec width))))
 
-(defn ^:private sort-table-body-rows [ast]
-  (-> ast
+(defn ^:private sort-table-body-rows [zt]
+  (-> zt
       move-to-table-body
       (z/edit
        (fn [table-body]
          (update table-body :children #(->> % (sort-by :id) vec))))
       z/up))
 
-(defn ^:private sort-table-header-rows [ast]
-  (if (-> ast z/node :header-idx)
-    (-> ast
+(defn ^:private sort-table-header-rows [zt]
+  (if (-> zt z/node :header-idx)
+    (-> zt
         move-to-table-header
         (z/edit
          (fn [table-body]
            (update table-body :children #(->> % (sort-by :id) vec))))
         z/up)
-    ast))
+    zt))
 
 (defn ^:private table-body-cells [table]
   (let [table-body (some #(if (= (:type %) :table-body) %) (:children table))
@@ -1007,8 +1000,8 @@
     (not= table-area
           (+ cells-area table-height table-width -1))))
 
-(defn ^:private split-header-and-body-rows [ast]
-  (let [table (z/node ast)]
+(defn ^:private split-header-and-body-rows [zt]
+  (let [table (z/node zt)]
     (if-let [header-id (:header-idx table)]
       (let [table-header (some #(if (= (:type %) :table-header) %) (:children table))
             table-body (some #(if (= (:type %) :table-body) %) (:children table))
@@ -1019,34 +1012,34 @@
             updated-table-body (update table-body :children
                                        #(vec (set/difference (apply sorted-set-by row-comparator %)
                                                              (apply sorted-set-by row-comparator header-rows))))]
-        (z/edit ast #(assoc % :children [updated-table-header updated-table-body])))
-      ast)))
+        (z/edit zt #(assoc % :children [updated-table-header updated-table-body])))
+      zt)))
 
-(defn scan-table-cells [ast lines]
-  (let [table (z/node ast)
+(defn scan-table-cells [zt lines]
+  (let [table (z/node zt)
         {width :width height :height pos :pos} table
-        init-table-ast ast]
-    (loop [table-ast init-table-ast
+        init-table-zt zt]
+    (loop [table-zt init-table-zt
            corners [[0 0]]]
       (if-not (empty? corners)
         (let [[top left] (peek corners)
               next-corners (pop corners)]
-          (let [[next-table-ast cell-pos] (scan-right table-ast lines top left)]
+          (let [[next-table-zt cell-pos] (scan-right table-zt lines top left)]
             (if (and (vector? cell-pos) (= (count cell-pos) 4))
               (let [[_ _ bottom right] cell-pos
                     cell-content (get-cell-content lines cell-pos)
                     cell-node (create-table-cell cell-pos cell-content pos)]
-                (recur (-> next-table-ast (append-table-body-cell cell-node))
+                (recur (-> next-table-zt (append-table-body-cell cell-node))
                        (-> next-corners (cond->
                                             (valid-top-left-cell-corner? [top right] [width height])
                                           (conj [top right])
                                           (valid-top-left-cell-corner? [bottom left] [width height])
                                           (conj [bottom left]))
                            distinct sort reverse vec)))
-              (recur table-ast (-> corners sort reverse vec pop)))))
-        (if (-> table-ast z/node badform-table?)
-          (z/replace table-ast (create-error-malformed-table lines pos "Parse incomplete."))
-          (-> table-ast
+              (recur table-zt (-> corners sort reverse vec pop)))))
+        (if (-> table-zt z/node badform-table?)
+          (z/replace table-zt (create-error-malformed-table lines pos "Parse incomplete."))
+          (-> table-zt
               split-header-and-body-rows
               sort-table-header-rows
               sort-table-body-rows
@@ -1059,16 +1052,16 @@
                                 (string/replace "=" "-")))
     lines))
 
-(defn scan-table-block [ast lines pos]
+(defn scan-table-block [zt lines pos]
   (let [[width height] (text-block-size lines)
         init-table (create-grid-table width height pos)
-        init-table-ast (-> ast (append-node init-table) move-to-latest-child)
+        init-table-zt (-> zt (append-node init-table) move-to-latest-child)
         header-ids (find-grid-table-header-ids lines)]
     (case (count header-ids)
-      0 (scan-table-cells init-table-ast lines)
+      0 (scan-table-cells init-table-zt lines)
       1 (let [header-idx (first header-ids)
               non-header-lines (remove-table-header-line lines header-idx)]
-          (-> init-table-ast
+          (-> init-table-zt
               (z/edit #(assoc % :header-idx header-idx))
               (append-node (create-table-header))
               ;;(append-node (create-table-body))
@@ -1076,7 +1069,7 @@
       (let [msg (str "Multiple head/body row separators (table lines "
                      (string/join ", " header-ids)
                      "); only one allowed.")]
-        (z/replace init-table-ast (create-error-malformed-table lines pos msg))))))
+        (z/replace init-table-zt (create-error-malformed-table lines pos msg))))))
 
 (defn isolate-grid-table [ctx]
   (let [next-ctx (extract-table-block ctx)]
@@ -1089,8 +1082,8 @@
         [row col] pos
         table-pos [(- row (count buffers)) col]]
     (cond-> next-ctx
-      (not-empty buffers) (update-ast scan-table-block buffers table-pos)
-      (has-no-end-blank-line? lines current-idx) (update-ast append-error-table-no-end-blank-line pos)
+      (not-empty buffers) (update-zt scan-table-block buffers table-pos)
+      (has-no-end-blank-line? lines current-idx) (update-zt append-error-table-no-end-blank-line pos)
       :true clear-buffers)))
 
 (defn body->field-marker [ctx match])
@@ -1105,11 +1098,11 @@
         {current-idx :current-idx pos :pos} ctx]
     (-> ctx
         pop-state
-        (update-ast z/up)
-        (update-ast append-applicable-error-bullet-no-end-blank-line
-                    pos
-                    current-idx
-                    lines)
+        (update-zt z/up)
+        (update-zt append-applicable-error-bullet-no-end-blank-line
+                   pos
+                   current-idx
+                   lines)
         (transition match))))
 
 (defn bullet->indent [ctx match]
@@ -1123,7 +1116,7 @@
 
 (defn bullet->bullet
   [ctx [_ style spacing text]]
-  (let [bullet-list (-> ctx :ast z/node)
+  (let [bullet-list (-> ctx :zt z/node)
         indent (inc (count spacing))
         next-ctx (read-indented-lines
                   (-> ctx
@@ -1135,16 +1128,16 @@
     (if (and (= (:type bullet-list) :bullet-list)
              (= (:style bullet-list) style))
       (-> next-ctx
-          (update-ast append-bullet-item indented-lines indent pos)
+          (update-zt append-bullet-item indented-lines indent pos)
           clear-buffers)
       (-> next-ctx
-          (update-ast z/up)
-          (update-ast append-applicable-error-bullet-no-end-blank-line
-                      pos
-                      idx
-                      lines)
-          (update-ast append-bullet-list style)
-          (update-ast append-bullet-item indented-lines indent pos)
+          (update-zt z/up)
+          (update-zt append-applicable-error-bullet-no-end-blank-line
+                     pos
+                     idx
+                     lines)
+          (update-zt append-bullet-list style)
+          (update-zt append-bullet-item indented-lines indent pos)
           clear-buffers))))
 
 (def states
@@ -1198,14 +1191,14 @@
               (assoc n :children (vec children)))
             node))
 
-(defn single-paragraph-document? [ast]
-  (let [children (-> ast up-to-root z/children)]
+(defn single-paragraph-document? [zt]
+  (let [children (-> zt up-to-root z/children)]
     (and (= (count children) 1)
          (-> children first :type (= :paragraph)))))
 
 
-(defn unwrap-root-paragraph [ast]
-  (let [paragraph (-> ast up-to-root z/down)
+(defn unwrap-root-paragraph [zt]
+  (let [paragraph (-> zt up-to-root z/down)
         children (z/children paragraph)]
     (reduce (fn [t child]
               (z/append-child t child))
@@ -1215,8 +1208,8 @@
   "If the indented document contains a single paragraph
   unwrap the paragraph content"
   [ctx]
-  (if (and (indented? ctx) (-> ctx :ast single-paragraph-document?))
-    (update-ast ctx unwrap-root-paragraph)
+  (if (and (indented? ctx) (-> ctx :zt single-paragraph-document?))
+    (update-zt ctx unwrap-root-paragraph)
     ctx))
 
 (defn clean-up-buffers [ctx]
@@ -1229,18 +1222,18 @@
 ;; Context Function
 
 (defn process-lines [lines node pos]
-  (let [init-ast (zip-node node)
-        init-ctx (make-context lines init-ast :body pos)]
+  (let [init-zt (zip-node node)
+        init-ctx (make-context lines init-zt :body pos)]
     (loop [ctx init-ctx]
       (if-not (eof? ctx)
         (recur (transit ctx))
         (-> ctx
             clean-up-buffers
             unwrap-single-indented-document
-            :ast
+            :zt
             z/root)))))
 
 (defn process-document [document-lines]
-  (let [root-node (create-node {:type :root :children []})
+  (let [root-node (n/create {:type :root :children []})
         pos [0 0]]
     (process-lines document-lines root-node pos)))

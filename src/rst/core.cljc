@@ -15,8 +15,6 @@
                    :error    3
                    :severe   4})
 
-(defrecord StateTransition [state name parse])
-
 (defprotocol IReadingLines
   (current-line [_])
   (next-line [_])
@@ -56,7 +54,7 @@
     ;; TODO get the current state, get the correct transition and match according to the line
     (let [state (current-state this)
           [transition match] (next-transition state line)]
-      (parse this transition match)))
+      (transition this match)))
   (push-state [this state] (update this :states conj state))
   (pop-state [this] (update this :states pop))
   (current-state [this] (-> this :states peek))
@@ -119,9 +117,6 @@
    :bullet  #"([-+*\u2022\u2023\u2043])(\s+)(.*|$)"
    :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
    :text    #".+"})
-
-(defn parse [ctx transition match]
-  (-> transition :parse (apply [ctx match])))
 
 (defn match-transition [transition-name line]
   (-> patterns transition-name (re-matches line)))
@@ -1098,13 +1093,9 @@
       (has-no-end-blank-line? lines current-idx) (update-ast append-error-table-no-end-blank-line pos)
       :true clear-buffers)))
 
-(def body->field-marker {:name :enum,
-                         :state :body,
-                         :parse (fn [ctx match])})
+(defn body->field-marker [ctx match])
 
-(def body->option-marker {:name :enum,
-                          :state :body,
-                          :parse (fn [ctx match])})
+(defn body->option-marker [ctx match])
 
 (defn bullet->blank [ctx _]
   (forward ctx))
@@ -1157,23 +1148,23 @@
           clear-buffers))))
 
 (def states
-  {:body           {:transitions [(StateTransition. :body :blank body->blank)
-                                  (StateTransition. :body :indent body->indent)
-                                  (StateTransition. :body :bullet body->bullet)
+  {:body           {:transitions [[:blank body->blank]
+                                  [:indent body->indent]
+                                  [:bullet body->bullet]
                                   ;;body->enum
                                   ;;body->field-marker
                                   ;;body->option-marker
                                   ;;body->doctest
                                   ;;body->line-block
-                                  (StateTransition. :body :grid-table-top body->grid-table-top)
+                                  [:grid-table-top body->grid-table-top]
                                   ;;body->simple-table-top
                                   ;;body->explicit-markup
                                   ;;body->anonymous
-                                  (StateTransition. :body :line body->line)
-                                  (StateTransition. :body :text body->text)]}
-   :bullet         {:transitions [(StateTransition. :bullet :blank bullet->blank)
-                                  (StateTransition. :bullet :indent bullet->indent)
-                                  (StateTransition. :bullet :bullet bullet->bullet)
+                                  [:line body->line]
+                                  [:text body->text]]}
+   :bullet         {:transitions [[:blank bullet->blank]
+                                  [:indent bullet->indent]
+                                  [:bullet bullet->bullet]
                                   ;;bullet->enum
                                   ;;bullet->field-marker
                                   ;;bullet->option-marker
@@ -1183,19 +1174,21 @@
                                   ;;bullet->simple-table-top
                                   ;;bullet->explicit-markup
                                   ;;bullet->anonymous
-                                  (StateTransition. :bullet :line bullet->line)
-                                  (StateTransition. :bullet :text bullet->text)]}
-   :line           {:transitions [(StateTransition. :line :blank line->blank)
-                                  (StateTransition. :line :text line->text)
-                                  (StateTransition. :line :line line->line)]}
-   :text           {:transitions [(StateTransition. :text :blank text->blank)
+                                  [:line bullet->line]
+                                  [:text bullet->text]]}
+   :line           {:transitions [[:blank line->blank]
+                                  [:text line->text]
+                                  [:line line->line]]}
+   :text           {:transitions [[:blank text->blank]
                                   ;;text->indent
-                                  (StateTransition. :text :line text->line)
-                                  (StateTransition. :text :text text->text)]}})
+                                  [:line text->line]
+                                  [:text text->text]]}})
+
+;; Transition function: match-transition
 
 (defn next-transition [state line]
-  (some #(if-let [match (match-transition (:name %) line)]
-           [% match])
+  (some #(if-let [match (match-transition (first %) line)]
+           [(peek %) match])
         (-> states state :transitions)))
 
 (defn zip-node [node]

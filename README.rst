@@ -49,6 +49,7 @@ Document Body
   + Grid table `Checked`
   + Simple table
 - Explicit markup blocks
+
   + Footnote
   + Citation
   + Hyperlink target

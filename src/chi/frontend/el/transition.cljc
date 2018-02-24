@@ -1,5 +1,5 @@
 (ns chi.frontend.el.transition
-  (:require [chi.node :as n]))
+  (:require [chi.frontend.node :as n]))
 
 (defn create []
   (n/create {:type :transition}))

@@ -1,4 +1,4 @@
-(ns chi.blockquotes-test
+(ns chi.frontend.blockquotes-test
   (:require #?(:cljs [cljs.test    :as t :refer-macros [deftest testing]]
                :clj  [clojure.test :as t :refer        [deftest testing]])
             #?(:cljs [chi.test-support :refer [assert-node]]

@@ -1,4 +1,4 @@
-(ns chi.sections-test
+(ns chi.frontend.sections-test
   (:require #?(:cljs [cljs.test    :as t :refer-macros [deftest testing]]
                :clj  [clojure.test :as t :refer        [deftest testing]])
             #?(:cljs [chi.test-support :refer [assert-node]]

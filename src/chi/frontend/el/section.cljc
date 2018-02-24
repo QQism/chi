@@ -1,7 +1,7 @@
 (ns chi.frontend.el.section
   (:require [clojure.string :as string]
-            [chi.node :as n]
-            [chi.tree :as t]
+            [chi.frontend.node :as n]
+            [chi.frontend.tree :as t]
             [chi.frontend.el.verse :as verse]
             [chi.frontend.error :as err]))
 

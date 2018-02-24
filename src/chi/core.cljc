@@ -11,7 +11,7 @@
             [chi.frontend.el.section :as section]
             [chi.frontend.el.transition :as transition]
             [chi.frontend.el.verse :as verse])
-  #?(:clj (:import [chi.context DocumentContext])))
+  #?(:clj (:import [chi.frontend.context DocumentContext])))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])

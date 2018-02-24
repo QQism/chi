@@ -96,8 +96,6 @@
         (:value ast)
         )))
 
-(str "123" "456")
-
 (time (doall
        (let [node (create-deep-ast test-ast)
              ;;test-ast

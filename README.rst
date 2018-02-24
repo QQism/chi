@@ -12,6 +12,7 @@ Document Structure
 
 - Document `Checked`
 - Section `Checked`
+
   + Title `Checked`
 - Transition `Checked`
 
@@ -19,6 +20,7 @@ Document Body
 
 - Paragraph `Checked`
 - Inline markup
+
   + Emphasis
   + Strong emphasis
   + Interpreted text
@@ -31,16 +33,19 @@ Document Body
   + substitution references
   + Inline internal target
 - Block
+
   + Literal block
   + Block quotes `Checked`
   + Doctest block
 - Lists
+
   + Bullet `Checked`
   + Enumerated
   + Definitions
   + Field lists
   + Option lists
 - Table
+
   + Grid table `Checked`
   + Simple table
 - Explicit markup blocks
@@ -48,6 +53,7 @@ Document Body
   + Citation
   + Hyperlink target
   + Directives
+
     - highlight.js
     - Mathjax
     - Tables

@@ -6,6 +6,7 @@
             [chi.frontend.node :as n]
             [chi.frontend.tree :as t]
             [chi.frontend.error :as err]
+            [chi.frontend.patterns :as patt]
             [chi.frontend.el.preserve :as preserve]
             [chi.frontend.el.paragraph :as paragraph]
             [chi.frontend.el.section :as section]
@@ -35,24 +36,6 @@
 (defn update-zt [ctx f & args]
   (update ctx :zt #(apply f % args)))
 
-(def patterns
-  {:blank   #" *$"
-   :indent  #"(\s+)(.+)"
-   :grid-table-top #"\+-[-\+]+-\+ *$"
-   :grid-table-head-sep #"\+=[=+]+=\+ *$"
-   :grid-table-left-side #"^(\+|\|).*"
-   :grid-table-right-side #".*(\+|\|)$"
-   :bullet  #"([-+*\u2022\u2023\u2043])(\s+)(.*|$)"
-   :line    #"([\!-\/\:-\@\[-\`\{-\~])\1* *$"
-   :text    #".+"})
-
-(defn match-transition [transition-name line]
-  (-> patterns transition-name (re-matches line)))
-
-(defn match-transition? [transition-name line]
-  (-> (match-transition transition-name line)
-      nil? not))
-
 (defn create-blockquote [indent]
   (n/create {:type :blockquote
              :indent indent
@@ -81,7 +64,6 @@
 (defn append-transition [zt transition]
   (t/append-child zt transition))
 
-;; TODO: add the current loc id to path
 (defn find-matching-section-loc [zt style]
   ;; Travel in the whole doc from top to the current path
   ;; - if there is a section having the same style as the new section
@@ -168,7 +150,7 @@
         (append-transition transition))))
 
 (defn append-applicable-error-blockquote-no-end-blank-line [zt pos lines eof?]
-  (if-not (or (match-transition? :blank (peek lines)) eof?)
+  (if-not (or (patt/match? :blank (peek lines)) eof?)
     (let [msg "Block quote ends without a blank line; unexpected unindent."
           error (err/create msg ::err/warning pos)]
       (append-error zt error))
@@ -177,7 +159,7 @@
 (defn append-applicable-error-bullet-no-end-blank-line [zt pos idx lines]
   (if (> idx 0)
     (let [prev-line (nth lines (dec idx))]
-      (if (match-transition? :blank prev-line)
+      (if (patt/match? :blank prev-line)
         zt
         (let [msg "Bullet list ends without a blank line; unexpected unindent."
               error (err/create msg ::err/warning pos)]
@@ -186,7 +168,7 @@
 
 (defn has-no-end-blank-line? [lines idx]
   (let [current-line (nth lines idx :eof)]
-    (not (or (= current-line :eof) (match-transition? :blank current-line)))))
+    (not (or (= current-line :eof) (patt/match? :blank current-line)))))
 
 (defn append-error-table-no-end-blank-line [zt pos]
   (let [msg "Blank line required after table."
@@ -304,7 +286,7 @@
       (loop [current-ctx ctx]
         (if-not (c/eof? current-ctx)
           (let [line (c/current-line current-ctx)]
-            (if (match-transition? :blank line)
+            (if (patt/match? :blank line)
               (recur (-> current-ctx c/forward))
               (-> current-ctx
                   (update-zt append-transition-line->blank prev-pos)
@@ -336,7 +318,7 @@
     (if-not (c/eof-on-next? ctx)
       (let [next-text-line (c/next-line ctx)
             next-text-lines (conj current-text-lines next-text-line)]
-        (if (match-transition? :line next-text-line)
+        (if (patt/match? :line next-text-line)
           (if (and (= prev-text-line next-text-line)
                    (or (not prev-short-line?)
                        (<= (count current-text-line) (count prev-text-line))))
@@ -409,14 +391,14 @@
   (loop [current-ctx ctx]
     (if-not (c/eof? current-ctx)
       (let [line (c/current-line current-ctx)]
-        (cond (match-transition? :blank line)
+        (cond (patt/match? :blank line)
               ;; blank line, create paragraph & return
               (let [block-text (string/join " " (:buffers current-ctx))]
                 (-> current-ctx
                     (update-zt append-paragraph block-text)
                     c/clear-buffers
                     c/pop-state))
-              (match-transition? :indent line)
+              (patt/match? :indent line)
               (let [block-text (string/join " " (:buffers current-ctx))
                     pos (:pos current-ctx)]
                 (-> current-ctx
@@ -475,7 +457,7 @@
         (let [line (c/current-line current-ctx)]
           (if-let [match (re-matches indented-pattern line)]
             (recur (conj indented-lines (nth match 1)) (c/forward current-ctx))
-            (if (match-transition? :blank line)
+            (if (patt/match? :blank line)
               (recur (conj indented-lines "") (c/forward current-ctx))
               (-> current-ctx
                   (c/update-buffers indented-lines)))))
@@ -523,7 +505,7 @@
   [ctx]
   (if-not (c/eof? ctx)
     (let [line (c/current-line ctx)]
-      (if-not (match-transition? :blank line)
+      (if-not (patt/match? :blank line)
         (recur (-> ctx
                    (c/add-to-buffers line)
                    c/forward))
@@ -550,7 +532,7 @@
       (loop [idx end-idx]
         (if (> idx 2)
           (let [line (nth lines idx)]
-            (if (match-transition? :grid-table-top line)
+            (if (patt/match? :grid-table-top line)
               (backward-buffers ctx idx)
               (recur (dec idx))))
           (backward-buffers ctx idx)))
@@ -566,7 +548,7 @@
       (loop [idx 0]
         (if (< idx c)
           (let [line (nth lines idx)]
-            (if (match-transition? :grid-table-left-side line)
+            (if (patt/match? :grid-table-left-side line)
               (recur (inc idx))
               (backward-buffers ctx (dec idx))))
           ctx))
@@ -581,7 +563,7 @@
         (if (< idx c)
           (let [line (nth lines idx)]
             (if (and (= width (count line))
-                     (match-transition? :grid-table-right-side line))
+                     (patt/match? :grid-table-right-side line))
               (recur (inc idx))
               (let [[row col] (:pos ctx)
                     last-pos [(- row c )col]]
@@ -593,7 +575,7 @@
 
 (defn ^:private find-grid-table-header-ids [lines]
   (reduce-kv (fn [heads idx line]
-               (if (match-transition? :grid-table-head-sep line)
+               (if (patt/match? :grid-table-head-sep line)
                  (conj heads idx)
                  heads))
              [] lines))
@@ -614,7 +596,7 @@
   (-> lines (nth row) (nth col)))
 
 (defn line-indent [line]
-  (if-let [match (match-transition :indent line)]
+  (if-let [match (patt/match :indent line)]
     (let [[_ spaces _] match]
       (count spaces))
     0))
@@ -1013,10 +995,10 @@
                                   [:line text->line]
                                   [:text text->text]]}})
 
-;; Transition function: match-transition
+;; Transition function: patt/match
 
 (defn next-transition [state line]
-  (some #(if-let [match (match-transition (first %) line)]
+  (some #(if-let [match (patt/match (first %) line)]
            [(peek %) match])
         (-> states state :transitions)))
 

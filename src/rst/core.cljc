@@ -7,7 +7,9 @@
             [rst.error :as err]
             [rst.preserve :as preserve]
             [rst.paragraph :as paragraph]
-            [rst.text :as text]))
+            [rst.section :as section]
+            [rst.transition :as transition]
+            [rst.verse :as verse]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])
@@ -74,15 +76,6 @@
 (defn update-zt [ctx f & args]
   (update ctx :zt #(apply f % args)))
 
-(def non-alphanum-7-bit #"([\!-\/\:-\@\[-\`\{-\~])")
-
-(defn normalize-section-name [name]
-  (-> name
-      (string/replace non-alphanum-7-bit "")
-      string/trim
-      (string/replace #"\s{1,}" "-")
-      string/lower-case))
-
 (def patterns
   {:blank   #" *$"
    :indent  #"(\s+)(.+)"
@@ -100,20 +93,6 @@
 (defn match-transition? [transition-name line]
   (-> (match-transition transition-name line)
       nil? not))
-
-(defn create-header [text line]
-  (n/create {:type :header
-             :children (text/create-inline-markup text)}))
-
-(defn create-section [text line style]
-  (let [adornment (first line)]
-    (n/create {:type :section
-               :style (str style adornment)
-               :name (normalize-section-name text)
-               :children [(create-header text line)]})))
-
-(defn create-transition []
-  (n/create {:type :transition}))
 
 (defn create-blockquote [indent]
   (n/create {:type :blockquote
@@ -169,61 +148,15 @@
       (append-section matched-parent-section section)
       (append-section zt section))))
 
-(defn append-error-section-title-too-short [zt pos style text-lines]
-  (let [block-text (string/join "\r\n" text-lines)
-        msg (str "Title " style " too short.")
-        error (err/create msg ::err/warning pos block-text)]
-    (append-error zt error)))
-
-(defn append-error-section-mismatching-underline [zt pos text-lines]
-  (let [block-text (string/join "\r\n" text-lines)
-        msg "Missing matching underline for section title overline."
-        error (err/create msg ::err/severe pos block-text)]
-    (append-error zt error)))
-
-(defn append-error-section-mismatching-overline-underline [zt pos text-lines]
-  (let [block-text (string/join "\r\n" text-lines)
-        msg "Title overline & underline mismatch."
-        error (err/create msg ::err/severe pos block-text)]
-    (append-error zt error)))
-
-(defn append-error-incomplete-section-title [zt pos text-lines]
-  (let [block-text (string/join "\r\n" text-lines)
-        msg "Incomplete section title."
-        error (err/create msg ::err/severe pos block-text)]
-    (append-error zt error)))
-
-(defn append-error-unexpected-section-title [zt pos text-lines]
-  (let [block-text (string/join "\r\n" text-lines)
-        msg "Unexpected section title."
-        error (err/create msg ::err/severe pos block-text)]
-    (append-error zt error)))
-
-(defn append-error-unexpected-section-title-or-transition [zt pos text-lines]
-  (let [block-text (string/join "\r\n" text-lines)
-        msg "Unexpected section title or transition."
-        error (err/create msg ::err/severe pos block-text)]
-    (append-error zt error)))
-
-(defn is-section-title-short? [style text-lines]
-  (case style
-    "underline"
-    (let [[text underline] text-lines]
-      (< (count underline) (count text)))
-    "overline"
-    (let [[overline text _] text-lines]
-      (< (count overline) (count text)))
-    false))
-
 (defn append-applicable-error-section-title-too-short [zt pos style text-lines]
-  (if (is-section-title-short? style text-lines)
-    (append-error-section-title-too-short zt pos style text-lines)
+  (if (section/is-title-short? style text-lines)
+    (append-error zt (section/error-section-title-too-short pos style text-lines))
     zt))
 
 (defn append-section-line->text-line [zt pos text-lines]
   (let [[overline text _] text-lines
         section-style "overline"
-        new-section (create-section text overline section-style)]
+        new-section (section/create text overline section-style)]
     (-> zt (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short pos
                                                          section-style
@@ -232,7 +165,7 @@
 (defn append-section-text->line [zt pos text-lines]
   (let [[text underline] text-lines
         section-style "underline"
-        new-section (create-section text underline section-style)]
+        new-section (section/create text underline section-style)]
     (-> zt
         (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short pos
@@ -269,7 +202,7 @@
     (append-error zt error)))
 
 (defn append-transition-line->blank [zt pos]
-  (let [transition (create-transition)]
+  (let [transition (transition/create)]
     (-> zt
         (append-applicable-error-doc-start-with-transition pos)
         (append-applicable-error-adjacent-transitions pos)
@@ -362,9 +295,9 @@
             (add-to-buffers line)
             (push-state :text))
         (-> ctx
-            (update-zt append-error-unexpected-section-title-or-transition
-                       pos
-                       [line])
+            (update-zt append-error
+                       (section/error-unexpected-section-title-or-transition pos
+                                                                             [line]))
             forward))
       (-> ctx
           forward
@@ -376,7 +309,7 @@
     (t/append-child zt paragraph)))
 
 (defn anppend-text [zt text]
-  (let [text (text/create-inline-markup text)]
+  (let [text (verse/create-inline-markup text)]
     (t/append-child zt text)))
 
 (defn body->text
@@ -462,9 +395,9 @@
                   pop-state
                   (push-state :text))
               (-> ctx
-                  (update-zt append-error-section-mismatching-overline-underline
-                             prev-pos
-                             next-text-lines)
+                  (update-zt append-error
+                             (section/error-section-mismatching-overline-underline prev-pos
+                                                                                   next-text-lines))
                   forward
                   forward
                   clear-buffers
@@ -477,9 +410,9 @@
                 pop-state
                 (push-state :text))
             (-> ctx
-                (update-zt append-error-section-mismatching-underline
-                           prev-pos
-                           next-text-lines)
+                (update-zt append-error
+                           (section/error-section-mismatching-underline prev-pos
+                                                                        next-text-lines))
                 forward
                 forward
                 clear-buffers
@@ -491,9 +424,9 @@
             pop-state
             (push-state :text))
         (-> ctx
-            (update-zt append-error-incomplete-section-title
-                       prev-pos
-                       current-text-lines)
+            (update-zt append-error
+                       (section/error-incomplete-section-title prev-pos
+                                                               current-text-lines))
             forward
             clear-buffers
             pop-state)))))
@@ -562,7 +495,9 @@
       (text->text ctx match)
       (if (indented? ctx)
         (-> ctx
-            (update-zt append-error-unexpected-section-title pos text-lines)
+            (update-zt append-error
+                       (section/error-unexpected-section-title pos
+                                                               text-lines))
             forward
             clear-buffers
             pop-state)

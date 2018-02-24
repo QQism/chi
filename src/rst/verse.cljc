@@ -1,4 +1,4 @@
-(ns rst.text
+(ns rst.verse
   (:require [clojure.string :as string]
             [rst.node :as n]))
 

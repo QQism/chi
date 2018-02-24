@@ -1,7 +1,7 @@
 (ns rst.paragraph
   (:require [rst.node :as n]
-            [rst.text :as text]))
+            [rst.verse :as verse]))
 
 (defn create [text]
   (n/create {:type :paragraph
-             :children (text/create-inline-markup text)}))
+             :children (verse/create-inline-markup text)}))

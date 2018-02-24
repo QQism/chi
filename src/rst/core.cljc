@@ -1,11 +1,13 @@
 (ns rst.core
   (:require [clojure.string :as string]
             [clojure.pprint :refer [pprint]]
-            [clojure.zip :as z]
             [clojure.set :as set]
             [rst.node :as n]
             [rst.tree :as t]
-            [rst.error :as err]))
+            [rst.error :as err]
+            [rst.preserve :as preserve]
+            [rst.paragraph :as paragraph]
+            [rst.text :as text]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])
@@ -99,18 +101,9 @@
   (-> (match-transition transition-name line)
       nil? not))
 
-(defn create-preserve [text]
-  (n/create {:type :preserve :value text}))
-
-(defn create-inline-markup-text [text]
-  ;; TODO: parse the text into an vector of text
-  ;; if there are inline-markups, parse them accordingly
-  [(n/create {:type :text
-              :value (string/trimr text)})])
-
 (defn create-header [text line]
   (n/create {:type :header
-             :children (create-inline-markup-text text)}))
+             :children (text/create-inline-markup text)}))
 
 (defn create-section [text line style]
   (let [adornment (first line)]
@@ -119,25 +112,8 @@
                :name (normalize-section-name text)
                :children [(create-header text line)]})))
 
-(defn create-paragraph [text]
-  (n/create {:type :paragraph
-             :children (create-inline-markup-text text)}))
-
 (defn create-transition []
   (n/create {:type :transition}))
-
-(defn create-error
-  ([description level pos]
-   (n/create {:type :error
-              :level (level err/levels)
-              :pos (->> pos (map inc) vec)
-              :children [(create-paragraph description)]}))
-  ([description level pos block-text]
-   (n/create {:type :error
-              :level (level err/levels)
-              :pos (->> pos (map inc) vec)
-              :children [(create-paragraph description)
-                         (create-preserve block-text)]})))
 
 (defn create-blockquote [indent]
   (n/create {:type :blockquote
@@ -196,37 +172,37 @@
 (defn append-error-section-title-too-short [zt pos style text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg (str "Title " style " too short.")
-        error (create-error msg ::err/warning pos block-text)]
+        error (err/create msg ::err/warning pos block-text)]
     (append-error zt error)))
 
 (defn append-error-section-mismatching-underline [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Missing matching underline for section title overline."
-        error (create-error msg ::err/severe pos block-text)]
+        error (err/create msg ::err/severe pos block-text)]
     (append-error zt error)))
 
 (defn append-error-section-mismatching-overline-underline [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Title overline & underline mismatch."
-        error (create-error msg ::err/severe pos block-text)]
+        error (err/create msg ::err/severe pos block-text)]
     (append-error zt error)))
 
 (defn append-error-incomplete-section-title [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Incomplete section title."
-        error (create-error msg ::err/severe pos block-text)]
+        error (err/create msg ::err/severe pos block-text)]
     (append-error zt error)))
 
 (defn append-error-unexpected-section-title [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Unexpected section title."
-        error (create-error msg ::err/severe pos block-text)]
+        error (err/create msg ::err/severe pos block-text)]
     (append-error zt error)))
 
 (defn append-error-unexpected-section-title-or-transition [zt pos text-lines]
   (let [block-text (string/join "\r\n" text-lines)
         msg "Unexpected section title or transition."
-        error (create-error msg ::err/severe pos block-text)]
+        error (err/create msg ::err/severe pos block-text)]
     (append-error zt error)))
 
 (defn is-section-title-short? [style text-lines]
@@ -276,20 +252,20 @@
 (defn append-applicable-error-doc-start-with-transition [zt pos]
   (if (document-begin? zt)
     (let [msg "Document or section may not begin with a transition."
-          error (create-error msg ::err/error pos)]
+          error (err/create msg ::err/error pos)]
       (append-error zt error))
     zt))
 
 (defn append-applicable-error-adjacent-transitions [zt pos]
   (if (last-node-transition? zt)
     (let [msg "At least one body element must separate transitions; adjacent transitions are not allowed."
-          error (create-error msg ::err/error pos)]
+          error (err/create msg ::err/error pos)]
       (append-error zt error))
     zt))
 
 (defn append-error-doc-end-with-transition [zt pos]
   (let [msg "Document may not end with a transition."
-        error (create-error msg ::err/error pos)]
+        error (err/create msg ::err/error pos)]
     (append-error zt error)))
 
 (defn append-transition-line->blank [zt pos]
@@ -302,7 +278,7 @@
 (defn append-applicable-error-blockquote-no-end-blank-line [zt pos lines eof?]
   (if-not (or (match-transition? :blank (peek lines)) eof?)
     (let [msg "Block quote ends without a blank line; unexpected unindent."
-          error (create-error msg ::err/warning pos)]
+          error (err/create msg ::err/warning pos)]
       (append-error zt error))
     zt))
 
@@ -312,7 +288,7 @@
       (if (match-transition? :blank prev-line)
         zt
         (let [msg "Bullet list ends without a blank line; unexpected unindent."
-              error (create-error msg ::err/warning pos)]
+              error (err/create msg ::err/warning pos)]
           (append-error zt error))))
     zt))
 
@@ -324,12 +300,12 @@
   (let [msg "Blank line required after table."
         [row col] pos
         prev-pos [(dec row) col]
-        error (create-error msg ::err/warning prev-pos)]
+        error (err/create msg ::err/warning prev-pos)]
     (append-error zt error)))
 
 (defn append-error-unexpected-indentation [zt pos]
   (let [msg "Unexpected indentation."
-        error (create-error msg ::err/error pos)]
+        error (err/create msg ::err/error pos)]
     (append-error zt error)))
 
 (defn append-blockquote-body->indent [zt lines indent pos]
@@ -357,14 +333,14 @@
 
 (defn append-preserve-text [zt lines]
   (let [block-text (string/join "\r\n" lines)
-        preserve-text (create-preserve block-text)]
+        preserve-text (preserve/create block-text)]
     (-> zt (t/append-child preserve-text))))
 
 (defn create-error-malformed-table
   ([lines pos description]
    (let [block-text (string/join "\r\n" lines)
          msg (string/join " " ["Malformed table." description])]
-     (create-error (string/trimr msg) ::err/error pos block-text)))
+     (err/create (string/trimr msg) ::err/error pos block-text)))
   ([lines pos]
    (create-error-malformed-table lines pos "")))
 
@@ -396,11 +372,11 @@
           (push-state :line)))))
 
 (defn append-paragraph [zt block-text]
-  (let [paragraph (create-paragraph block-text)]
+  (let [paragraph (paragraph/create block-text)]
     (t/append-child zt paragraph)))
 
 (defn anppend-text [zt text]
-  (let [text (create-inline-markup-text text)]
+  (let [text (text/create-inline-markup text)]
     (t/append-child zt text)))
 
 (defn body->text

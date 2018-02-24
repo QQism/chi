@@ -11,8 +11,7 @@
             [rst.section :as section]
             [rst.transition :as transition]
             [rst.verse :as verse])
-  #?(:clj
-     (:import [rst.context DocumentContext])))
+  #?(:clj (:import [rst.context DocumentContext])))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])
@@ -1025,7 +1024,6 @@
   (let [children (-> zt t/up-to-root t/children)]
     (and (= (count children) 1)
          (-> children first :type (= :paragraph)))))
-
 
 (defn unwrap-root-paragraph [zt]
   (let [paragraph (-> zt t/up-to-root t/down)

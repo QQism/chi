@@ -1,6 +1,6 @@
-(defproject rst "0.1.0-SNAPSHOT"
-  :description "This is a restructuredtext parser which output either HTML or hiccup data"
-  :url "https://quang.be/rst"
+(defproject chi "0.1.0-SNAPSHOT"
+  :description "The restructuredtext compiler which generates HTML and more"
+  :url "https://quang.be/chi"
   :license {:name "MIT"}
   :dependencies [[org.clojure/clojure "1.9.0" :scope "provided"]
                  [org.clojure/clojurescript "1.9.946" :scope "provided"]]

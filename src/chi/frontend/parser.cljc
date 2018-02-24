@@ -18,20 +18,24 @@
 (defn ^:declared process-lines [lines node pos])
 (defn ^:declared next-transition [state line])
 
-(defprotocol ITransit
-  (transit [_] [_ line]))
+(defprotocol IParserTransit
+  (transit [_] [_ line])
+  (clean-up-buffers [_]))
 
 #?(:cljs (def DocumentContext c/DocumentContext))
 
 (extend-type DocumentContext
-  ITransit
+  IParserTransit
   (transit
     ([this] (transit this (c/current-line this)))
     ([this line]
-     ;; TODO get the current state, get the correct transition and match according to the line
      (let [state (c/current-state this)
            [transition match] (next-transition state line)]
-       (transition this match)))))
+       (transition this match))))
+  (clean-up-buffers [this]
+    (if (c/buffers? this)
+      (transit this "")
+      this)))
 
 (defn update-zt [ctx f & args]
   (update ctx :zt #(apply f % args)))
@@ -1020,11 +1024,6 @@
   [ctx]
   (if (and (c/indented? ctx) (-> ctx :zt single-paragraph-document?))
     (update-zt ctx unwrap-root-paragraph)
-    ctx))
-
-(defn clean-up-buffers [ctx]
-  (if (c/buffers? ctx)
-    (transit ctx "")
     ctx))
 
 ;; Input: ctx string -> new-ctx

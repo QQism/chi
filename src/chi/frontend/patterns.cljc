@@ -1,6 +1,6 @@
 (ns chi.frontend.patterns)
 
-(def patterns
+(def ^{:private true :const true} patterns
   {:blank   #" *$"
    :indent  #"(\s+)(.+)"
    :grid-table-top #"\+-[-\+]+-\+ *$"

@@ -3,7 +3,7 @@
                :clj  [clojure.test :as t :refer        [deftest testing]])
             #?(:cljs [chi.test-support :refer [assert-node]]
                :clj  [chi.assert-macros :refer [assert-node]])
-            [chi.core :refer [process-document]]))
+            [chi.frontend.parser :refer [lines->ast]]))
 
 #?(:cljs (enable-console-print!))
 
@@ -15,7 +15,7 @@
                  "===="
                  ""
                  "Lorem Ipsum has been the industry's standard..."]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 3 count]} root)
 
       (let [[paragraph-1 transition paragraph-2] (:children root)]
@@ -39,7 +39,7 @@
                  "==="
                  ""
                  "Lorem Ipsum has been the industry's standard..."]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 3 count]} root)
 
       (let [[paragraph-1 paragraph-2 paragraph-3] (:children root)]
@@ -67,7 +67,7 @@
                  ""
                  "===="
                  ""]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 3 count]} root)
 
       (let [[paragraph transition error] (:children root)]
@@ -93,7 +93,7 @@
                  ""
                  "==="
                  ""]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 2 count]} root)
 
       (let [[paragraph-1 paragraph-2] (:children root)]
@@ -115,7 +115,7 @@
                ""
                "Lorem Ipsum is simply dummy text of"
                "the printing and typesetting industry."]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 3 count]} root)
     (let [[error transition paragraph] (:children root)]
       (assert-node {:type :error
@@ -145,7 +145,7 @@
                ""
                "Lorem Ipsum is simply dummy text of"
                "the printing and typesetting industry."]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[section] (:children root)]
@@ -180,7 +180,7 @@
                ""
                "Lorem Ipsum is simply dummy text of"
                "the printing and typesetting industry."]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 5 count]} root)
 
     (let [[paragraph-1 transition-1 error transition-2 paragraph-2] (:children root)]

@@ -3,7 +3,7 @@
                :clj  [clojure.test :as t :refer        [deftest testing]])
             #?(:cljs [chi.test-support :refer [assert-node]]
                :clj  [chi.assert-macros :refer [assert-node]])
-            [chi.core :refer [process-document]]))
+            [chi.frontend.parser :refer [lines->ast]]))
 
 #?(:cljs (enable-console-print!))
 
@@ -12,7 +12,7 @@
     (let [lines ["Section Title"
                  "============="
                  "Section paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[section] (:children root)]
@@ -38,7 +38,7 @@
                  "Section Title"
                  "============="
                  "Section paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[section] (:children root)]
@@ -66,7 +66,7 @@
                "Second Title"
                "============"
                "Second paragraph content"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 2 count]} root)
 
     (let [[section-1 section-2] (:children root)]
@@ -122,7 +122,7 @@
                "Another Nested Title"
                "++++++++++++++++++++"
                "Another nested content"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 2 count]} root)
 
     (let [[section-1 section-2] (:children root)]
@@ -204,7 +204,7 @@
     (let [lines ["Section Title"
                  "===="
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[section] (:children root)]
@@ -240,7 +240,7 @@
     (let [lines ["Section Title"
                  "==="
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[paragraph] (:children root)]
@@ -254,7 +254,7 @@
   (let [lines ["Hea"
                "==="
                "Paragraph content"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[section] (:children root)]
@@ -281,7 +281,7 @@
                  "Section Title"
                  "===="
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[section] (:children root)]
@@ -318,7 +318,7 @@
                  "Section Title"
                  "==="
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[paragraph] (:children root)]
@@ -334,7 +334,7 @@
     (let [lines ["===="
                  "Section Title"
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[error] (:children root)]
@@ -354,7 +354,7 @@
     (let [lines ["==="
                  "Section Title"
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[paragraph] (:children root)]
@@ -371,7 +371,7 @@
                  "Section Title"
                  "=="
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 2 count]} root)
 
       (let [[error paragraph] (:children root)]
@@ -396,7 +396,7 @@
                  "Section Title"
                  "=="
                  "Paragraph content"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[paragraph] (:children root)]
@@ -410,7 +410,7 @@
   (testing  "overline longer than 3 chars"
     (let [lines ["===="
                  "Section Title"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[error] (:children root)]
@@ -429,7 +429,7 @@
   (testing "overline not longer than 3 chars"
     (let [lines ["==="
                  "Section Title"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 1 count]} root)
 
       (let [[paragraph] (:children root)]

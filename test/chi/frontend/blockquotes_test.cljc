@@ -3,7 +3,7 @@
                :clj  [clojure.test :as t :refer        [deftest testing]])
             #?(:cljs [chi.test-support :refer [assert-node]]
                :clj  [chi.assert-macros :refer [assert-node]])
-            [chi.core :refer [process-document]]))
+            [chi.frontend.parser :refer [lines->ast]]))
 
 #?(:cljs (enable-console-print!))
 
@@ -12,7 +12,7 @@
                ""
                "  Lorem Ipsum is simply dummy"
                ""]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 2 count]} root)
 
     (let [[paragraph blockquote] (:children root)]
@@ -37,7 +37,7 @@
                  "  's standard dummy text ever"
                  ""
                  "  Lorem Ipsum has been the industry's standard"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 2 count]} root)
 
       (let [[paragraph blockquote] (:children root)]
@@ -71,7 +71,7 @@
                  "  Lorem Ipsum has been the industry's standard"
                  ""
                  "Lorem Ipsum is simply dummy text"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 2 count]} root)
 
       (let [[blockquote paragraph] (:children root)]
@@ -105,7 +105,7 @@
                  ""
                  "  Lorem Ipsum has been the industry's standard"
                  "Lorem Ipsum is simply dummy text"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 3 count]} root)
 
       (let [[blockquote error paragraph] (:children root)]
@@ -150,7 +150,7 @@
                "  's standard dummy text ever"
                ""
                "  Lorem Ipsum has been the industry's standard"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 3 count]} root)
 
     (let [[paragraph error blockquote] (:children root)]
@@ -188,7 +188,7 @@
                "  's standard dummy text ever"
                ""
                "  ===="]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[blockquote] (:children root)]
@@ -222,7 +222,7 @@
                ""
                "  Joe"
                "  ==="]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[blockquote] (:children root)]

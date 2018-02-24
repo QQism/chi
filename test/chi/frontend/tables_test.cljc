@@ -4,7 +4,7 @@
             #?(:cljs [chi.test-support :refer [assert-node]]
                :clj  [chi.assert-macros :refer [assert-node]])
             [clojure.string :as string]
-            [chi.core :refer [process-document]]))
+            [chi.frontend.parser :refer [lines->ast]]))
 
 #?(:cljs (enable-console-print!))
 
@@ -14,7 +14,7 @@
                "+------------+------------+-----------+"
                "| Cell 2-1   |  Cell 2-2  |  Cell 2-3 |"
                "+------------+------------+-----------+"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[table] (:children root)]
@@ -57,7 +57,7 @@
 (deftest empty-grid-table
   (let [lines ["+------------+------------+-----------+"
                "+------------+------------+-----------+"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
 
@@ -88,7 +88,7 @@
                "+------------+------------+-----------+"
                "| Cell 2-1   |  Cell 2-2  |  Cell 2-3 |"
                "+------------+------------+-----------+"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[table] (:children root)]
@@ -154,7 +154,7 @@
                "+============+============+===========+"
                "| Cell 2-1   |  Cell 2-2  |  Cell 2-3 |"
                "+------------+------------+-----------+"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[error] (:children root)]
@@ -183,7 +183,7 @@
                "+------------+ span rows. +-----------+"
                "| Cell 5-1   |            | - Item 2  |"
                "+------------+------------+-----------+"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[table] (:children root)
@@ -265,7 +265,7 @@
                    "+------------+ span rows. +-----------+"
                    "| Cell 5-1   |            | - Item 2  |"
                    "+------------+------------+-----------+"]
-            root (process-document lines)]
+            root (lines->ast lines)]
         (assert-node {:type :root :children [:children-count 1 count]} root)
 
         (let [[table] (:children root)
@@ -347,7 +347,7 @@
                    "+------------+                        +"
                    "| This is a non rectangle cell        |"
                    "+------------+------------+-----------+"]
-            root (process-document lines)]
+            root (lines->ast lines)]
         (assert-node {:type :root :children [:children-count 1 count]} root)
 
         (let [[error] (:children root)]
@@ -370,7 +370,7 @@
                    "| Cell 2-1   |  Cell 2-2  |  Cell 2-3 |"
                    "+------------+------------+-----------+"
                    "Here should be a blank line."]
-            root (process-document lines)]
+            root (lines->ast lines)]
         (assert-node {:type :root :children [:children-count 3 count]} root)
 
         (let [[table error paragraph] (:children root)
@@ -435,7 +435,7 @@
                    "+------------+------------+-----------+"
                    ""
                    "This is a paragraph."]
-            root (process-document lines)]
+            root (lines->ast lines)]
 
         (assert-node {:type :root :children [:children-count 2 count]} root)
 

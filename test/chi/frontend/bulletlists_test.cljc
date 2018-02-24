@@ -3,13 +3,13 @@
                :clj  [clojure.test :as t :refer        [deftest testing]])
             #?(:cljs [chi.test-support :refer [assert-node]]
                :clj  [chi.assert-macros :refer [assert-node]])
-            [chi.core :refer [process-document]]))
+            [chi.frontend.parser :refer [lines->ast]]))
 
 #?(:cljs (enable-console-print!))
 
 (deftest single-line-bullet-item
   (let [lines ["- Lorem Ipsum is simply dummy text"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[list] (:children root)]
@@ -30,7 +30,7 @@
   (let [lines ["- Lorem Ipsum is simply dummy text"
                ""
                "  Lorem Ipsum is simply dummy's standard"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[list] (:children root)]
@@ -57,7 +57,7 @@
 (deftest single-line-bullet-list
   (let [lines ["- First item"
                "- Second item"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[list] (-> root :children)]
@@ -86,7 +86,7 @@
     (let [lines ["- First item"
                  "- Second item"
                  "Lorem Ipsum is simply dummy text"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 3 count]} root)
 
       (let [[list error paragraph] (:children root)]
@@ -128,7 +128,7 @@
                  "- Second item"
                  ""
                  "Lorem Ipsum is simply dummy text"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 2 count]} root)
       (let [[list paragraph] (:children root)]
         (assert-node {:type :bullet-list
@@ -161,7 +161,7 @@
                "- Second item"
                ""
                "  Lorem Ipsum is simply dummy's standard"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[list] (:children root)]
@@ -192,7 +192,7 @@
   (testing "without a blank line in between"
     (let [lines ["-   Lorem Ipsum is simply dummy text"
                  "  This is a separated blockquote"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 3 count]} root)
 
       (let [[list error blockquote] (:children root)]
@@ -230,7 +230,7 @@
     (let [lines ["-   Lorem Ipsum is simply dummy text"
                  ""
                  "  This is a separated blockquote"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 2 count]} root)
 
       (let [[list blockquote] (:children root)
@@ -260,7 +260,7 @@
     (let [lines ["- First item"
                  "- Second item"
                  "+ Another item"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 3 count]} root)
 
       (let [[list-1 error list-2] (:children root)]
@@ -310,7 +310,7 @@
                  "- Second item"
                  ""
                  "+ Another item"]
-          root (process-document lines)]
+          root (lines->ast lines)]
       (assert-node {:type :root :children [:children-count 2 count]} root)
 
       (let [[list-1 list-2] (:children root)]
@@ -349,7 +349,7 @@
       (let [lines ["- First item"
                    "- Second item"
                    "  ==========="]
-            root (process-document lines)]
+            root (lines->ast lines)]
         (assert-node {:type :root :children [:children-count 1 count]} root)
 
         (let [[list] (-> root :children)]
@@ -389,7 +389,7 @@
   (let [lines ["- - First Item"
                "  - Second Item"
                "- Another Item"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[list] (:children root)]

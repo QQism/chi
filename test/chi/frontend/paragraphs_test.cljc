@@ -3,13 +3,13 @@
                :clj  [clojure.test :as t :refer        [deftest testing]])
             #?(:cljs [chi.test-support :refer [assert-node]]
                :clj  [chi.assert-macros :refer [assert-node]])
-            [chi.core :refer [process-document]]))
+            [chi.frontend.parser :refer [lines->ast]]))
 
 #?(:cljs (enable-console-print!))
 
 (deftest single-line-paragraph
   (let [lines ["Lorem Ipsum is simply dummy text"]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
     (let [[paragraph] (:children root)]
@@ -21,7 +21,7 @@
 (deftest multilines-paragraph
   (let [lines ["Lorem Ipsum is simply dummy text of"
                "the printing and typesetting industry."]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 1 count]} root)
 
 
@@ -37,7 +37,7 @@
                "the printing and typesetting industry."
                ""
                "Lorem Ipsum has been the industry's standard dummy text ever since..."]
-        root (process-document lines)]
+        root (lines->ast lines)]
     (assert-node {:type :root :children [:children-count 2 count]} root)
 
     (let [[paragraph-1 paragraph-2] (:children root)]

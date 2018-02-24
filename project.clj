@@ -16,8 +16,7 @@
                                    :output-dir "resources/public/js"
                                    :source-map "resources/public/js/main.js.map"
                                    :optimizations :advanced
-                                   :pretty-print false
-                                   }}
+                                   :pretty-print false}}
                        {:id "node-test"
                         :source-paths ["src" "test"]
                         :compiler {:output-to "target/cljsbuild/test.js"

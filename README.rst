@@ -1,8 +1,11 @@
-# rst
+===
+chi
+===
 
-A Clojure library designed to ... well, that part is up to you.
+A restructuredtext compiler which generates HTML content Clojure/ClojureScript/JavaScript
 
-## Usage
+Usage
+-----
 
 Document Structure
 - Document `Checked`
@@ -48,13 +51,8 @@ Document Body
   + Substitution definitions
   + Comments
 
-## Parser steps
-
-Read every single line
-- Detect early signals
-- 
-
-## License
+License
+-------
 
 Copyright © 2018 Quang Quach
 

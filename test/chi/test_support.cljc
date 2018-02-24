@@ -1,4 +1,4 @@
-(ns rst.test-support
+(ns chi.test-support
   (:require #?(:cljs [cljs.test    :as t]
                :clj  [clojure.test :as t])
             [clojure.pprint]

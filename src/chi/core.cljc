@@ -1,17 +1,17 @@
-(ns rst.core
+(ns chi.core
   (:require [clojure.string :as string]
             [clojure.pprint :refer [pprint]]
             [clojure.set :as set]
-            [rst.context :as c]
-            [rst.node :as n]
-            [rst.tree :as t]
-            [rst.error :as err]
-            [rst.preserve :as preserve]
-            [rst.paragraph :as paragraph]
-            [rst.section :as section]
-            [rst.transition :as transition]
-            [rst.verse :as verse])
-  #?(:clj (:import [rst.context DocumentContext])))
+            [chi.context :as c]
+            [chi.node :as n]
+            [chi.tree :as t]
+            [chi.error :as err]
+            [chi.preserve :as preserve]
+            [chi.paragraph :as paragraph]
+            [chi.section :as section]
+            [chi.transition :as transition]
+            [chi.verse :as verse])
+  #?(:clj (:import [chi.context DocumentContext])))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])

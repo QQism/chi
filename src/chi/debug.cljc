@@ -1,4 +1,4 @@
-(ns rst.debug)
+(ns chi.debug)
 
 (defmacro log
   "Print with console.log, if it exists."

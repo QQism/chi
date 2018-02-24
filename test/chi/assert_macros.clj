@@ -1,6 +1,6 @@
-(ns rst.assert-macros
+(ns chi.assert-macros
   (:require  [clojure.test :as t]
-             [rst.test-support :refer [transform-cond-nodes]]))
+             [chi.test-support :refer [transform-cond-nodes]]))
 
 (defmacro assert-node
   ([expected actual]

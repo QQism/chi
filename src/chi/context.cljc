@@ -1,5 +1,5 @@
-(ns rst.context
-  (:require [rst.error :as err]))
+(ns chi.context
+  (:require [chi.error :as err]))
 
 (defprotocol IReadingLines
   (current-line [_])

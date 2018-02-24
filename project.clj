@@ -24,7 +24,7 @@
                                    :output-dir "target/cljsbuild/out"
                                    :asset-path "target/cljsbuild/out"
                                    :source-map true
-                                   :main rst.runner
+                                   :main chi.runner
                                    :optimizations :none
                                    :target :nodejs
                                    :pretty-print true}}]})

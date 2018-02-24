@@ -1,4 +1,4 @@
-(ns rst.backend.html.dom
+(ns chi.backend.html.dom
   (:require [clojure.zip :as z]))
 
 (def nodes-tags {:root nil

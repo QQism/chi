@@ -1,7 +1,7 @@
-(ns rst.error
-  (:require [rst.node :as n]
-            [rst.preserve :as preserve]
-            [rst.paragraph :as paragraph]))
+(ns chi.error
+  (:require [chi.node :as n]
+            [chi.preserve :as preserve]
+            [chi.paragraph :as paragraph]))
 
 (def ^:const levels {::debug    0
                      ::info     1

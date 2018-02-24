@@ -1,6 +1,6 @@
-(ns rst.paragraph
-  (:require [rst.node :as n]
-            [rst.verse :as verse]))
+(ns chi.paragraph
+  (:require [chi.node :as n]
+            [chi.verse :as verse]))
 
 (defn create [text]
   (n/create {:type :paragraph

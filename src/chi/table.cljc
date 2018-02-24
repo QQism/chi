@@ -1,4 +1,4 @@
-(ns rst.table
-  (:require [rst.node :as n]
-            [rst.tree :as t]))
+(ns chi.table
+  (:require [chi.node :as n]
+            [chi.tree :as t]))
 

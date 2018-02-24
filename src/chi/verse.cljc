@@ -1,6 +1,6 @@
-(ns rst.verse
+(ns chi.verse
   (:require [clojure.string :as string]
-            [rst.node :as n]))
+            [chi.node :as n]))
 
 (defn create-inline-markup [text]
   ;; TODO: parse the text into an vector of text

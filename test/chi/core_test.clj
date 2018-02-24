@@ -1,2 +1,2 @@
-(ns rst.core-test
-  (:require [rst.core :refer :all]))
+(ns chi.core-test
+  (:require [chi.core :refer :all]))

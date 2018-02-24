@@ -1,4 +1,4 @@
-(ns rst.render.html.dom
+(ns rst.backend.html.dom
   (:require [clojure.zip :as z]))
 
 (def nodes-tags {:root nil
@@ -52,13 +52,13 @@
 (defn create-deep-ast [ast]
   (loop [t (zip-node ast)
          c 0]
-    (if (< c 100000);;(< c 648)
+    (if (< c 100);;(< c 648)
       (let []
         (recur (-> t (z/append-child ast) z/down z/right) (inc c)))
       (z/root t))))
 
 ;; To avoid stack over flow if the ast is nested too deeply,
-;; This implementation uses stacks of nodes and ss to store data while calling `recur`
+;; This implementation uses stacks of nodes and doms to store data while calling `recur`
 (defn nodes->html
   ""
   [nodes doms]
@@ -86,6 +86,31 @@
 
 (defn ast->html [ast opts]
   (nodes->html [ast] []))
+
+(defn ast->html-1 [ast]
+  (let [tag (-> ast :type nodes-tags)
+        children (:children ast)]
+    (if children (str (open-tag tag)
+                 (reduce #(str %1 (ast->html-1 %2)) "" children)
+                 (close-tag tag))
+        (:value ast)
+        )))
+
+(str "123" "456")
+
+(time (doall
+       (let [node (create-deep-ast test-ast)
+             ;;test-ast
+             ]
+         (ast->html node nil))
+       ))
+
+(time (doall
+       (let [node;; (create-deep-ast test-ast)
+             test-ast
+             ]
+         (ast->html-1 node))
+       ))
 
 (let [node ;;(create-deep-ast test-ast)
       test-ast

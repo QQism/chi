@@ -1,8 +1,8 @@
-(ns chi.section
+(ns chi.frontend.el.section
   (:require [clojure.string :as string]
             [chi.node :as n]
             [chi.tree :as t]
-            [chi.verse :as verse]
+            [chi.frontend.el.verse :as verse]
             [chi.error :as err]))
 
 (def non-alphanum-7-bit #"([\!-\/\:-\@\[-\`\{-\~])")

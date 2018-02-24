@@ -6,11 +6,11 @@
             [chi.node :as n]
             [chi.tree :as t]
             [chi.error :as err]
-            [chi.preserve :as preserve]
-            [chi.paragraph :as paragraph]
-            [chi.section :as section]
-            [chi.transition :as transition]
-            [chi.verse :as verse])
+            [chi.frontend.el.preserve :as preserve]
+            [chi.frontend.el.paragraph :as paragraph]
+            [chi.frontend.el.section :as section]
+            [chi.frontend.el.transition :as transition]
+            [chi.frontend.el.verse :as verse])
   #?(:clj (:import [chi.context DocumentContext])))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871

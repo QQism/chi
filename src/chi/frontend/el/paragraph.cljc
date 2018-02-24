@@ -1,6 +1,6 @@
-(ns chi.paragraph
+(ns chi.frontend.el.paragraph
   (:require [chi.node :as n]
-            [chi.verse :as verse]))
+            [chi.frontend.el.verse :as verse]))
 
 (defn create [text]
   (n/create {:type :paragraph

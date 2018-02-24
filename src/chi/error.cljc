@@ -1,7 +1,7 @@
 (ns chi.error
   (:require [chi.node :as n]
-            [chi.preserve :as preserve]
-            [chi.paragraph :as paragraph]))
+            [chi.frontend.el.preserve :as preserve]
+            [chi.frontend.el.paragraph :as paragraph]))
 
 (def ^:const levels {::debug    0
                      ::info     1

@@ -1,4 +1,4 @@
-(ns chi.preserve
+(ns chi.frontend.el.preserve
   (:require [chi.node :as n]))
 
 (defn create [text]

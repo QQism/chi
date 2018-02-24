@@ -1,4 +1,4 @@
-(ns chi.verse
+(ns chi.frontend.el.verse
   (:require [clojure.string :as string]
             [chi.node :as n]))
 

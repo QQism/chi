@@ -4,17 +4,12 @@
             [clojure.zip :as z]
             [clojure.set :as set]
             [rst.node :as n]
+            [rst.tree :as t]
             [rst.error :as err]))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
 (defn ^:declared process-lines [lines node pos])
 (defn ^:declared next-transition [state line])
-
-(def error-levels {:debug    0
-                   :info     1
-                   :warning  2
-                   :error    3
-                   :severe   4})
 
 (defprotocol IReadingLines
   (current-line [_])
@@ -76,23 +71,6 @@
 
 (defn update-zt [ctx f & args]
   (update ctx :zt #(apply f % args)))
-
-(defn get-uid-path [zt]
-  (-> zt
-      z/path
-      (->> (map :uid))
-      (conj (:uid (z/node zt)))
-      reverse))
-
-(defn up-to-root [zt]
-  (if-let [parent (z/up zt)]
-    (recur parent)
-    zt))
-
-(defn children-loc [zt]
-  (let [children-count (-> zt z/children count)
-        first-child (z/down zt)]
-    (take children-count (iterate z/right first-child))))
 
 (def non-alphanum-7-bit #"([\!-\/\:-\@\[-\`\{-\~])")
 
@@ -176,30 +154,18 @@
              :indent indent
              :children []}))
 
-(defn append-node [zt node]
-  (-> zt (z/append-child node)))
-
 (defn append-error [zt error]
-  (append-node zt error))
-
-(defn move-to-latest-child [zt]
-  (-> zt z/down z/rightmost))
+  (t/append-child zt error))
 
 (defn append-section [zt section]
   ;; Append the section as the new child of the current node location
   ;; Move the location to the position of the new child
   (-> zt
-      (append-node section)
-      move-to-latest-child))
+      (t/append-child section)
+      t/move-to-latest-child))
 
 (defn append-transition [zt transition]
-  (append-node zt transition))
-
-(defn find-loc-with-uid [zt child-uid]
-  (if (-> zt z/node :uid (= child-uid))
-    zt
-    (some #(if (-> % z/node :uid (= child-uid)) %)
-          (children-loc zt))))
+  (t/append-child zt transition))
 
 ;; TODO: add the current loc id to path
 (defn find-matching-section-loc [zt style]
@@ -208,13 +174,13 @@
   ;;   | return the location
   ;; - else
   ;;   | return nil
-  (let [current-uid-path (get-uid-path zt)]
-    (loop [current-loc (up-to-root zt)
+  (let [current-uid-path (t/uid-path zt)]
+    (loop [current-loc (t/up-to-root zt)
            depth 0]
       (if (< depth (count current-uid-path))
         (let [current-uid (nth current-uid-path depth)]
-          (if-let [section-loc (find-loc-with-uid current-loc current-uid)]
-            (let [section (z/node section-loc)]
+          (if-let [section-loc (t/find-loc-with-uid current-loc current-uid)]
+            (let [section (t/node section-loc)]
               (if (= (:style section) style)
                 current-loc
                 (recur section-loc (inc depth))))))))))
@@ -298,14 +264,14 @@
                                                          text-lines))))
 
 (defn document-begin? [zt]
-  (let [siblings (z/children zt)
+  (let [siblings (t/children zt)
         siblings-count (count siblings)]
     (or (= siblings-count 0)
         (and (= siblings-count 1)
              (-> siblings first :type (= :header))))))
 
-(defn last-sibling-transition? [zt]
-  (-> zt z/down z/rightmost z/node :type (= :transition)))
+(defn last-node-transition? [zt]
+  (-> zt t/move-to-latest-child t/node :type (= :transition)))
 
 (defn append-applicable-error-doc-start-with-transition [zt pos]
   (if (document-begin? zt)
@@ -315,7 +281,7 @@
     zt))
 
 (defn append-applicable-error-adjacent-transitions [zt pos]
-  (if (last-sibling-transition? zt)
+  (if (last-node-transition? zt)
     (let [msg "At least one body element must separate transitions; adjacent transitions are not allowed."
           error (create-error msg ::err/error pos)]
       (append-error zt error))
@@ -373,13 +339,13 @@
         new-pos [row raw-indent]
         processed-blockquote (process-lines lines blockquote new-pos)]
     (-> zt
-        (append-node processed-blockquote))))
+        (t/append-child processed-blockquote))))
 
 (defn append-bullet-list [zt style]
   (let [bullet-list (create-bullet-list style)]
     (-> zt
-        (append-node bullet-list)
-        move-to-latest-child)))
+        (t/append-child bullet-list)
+        t/move-to-latest-child)))
 
 (defn append-bullet-item [zt lines indent pos]
   (let [[row col] pos
@@ -387,12 +353,12 @@
         bullet-item (create-bullet-item raw-indent)
         new-pos [row raw-indent]
         processed-bullet-item (process-lines lines bullet-item new-pos)]
-    (-> zt (append-node processed-bullet-item))))
+    (-> zt (t/append-child processed-bullet-item))))
 
 (defn append-preserve-text [zt lines]
   (let [block-text (string/join "\r\n" lines)
         preserve-text (create-preserve block-text)]
-    (-> zt (append-node preserve-text))))
+    (-> zt (t/append-child preserve-text))))
 
 (defn create-error-malformed-table
   ([lines pos description]
@@ -431,11 +397,11 @@
 
 (defn append-paragraph [zt block-text]
   (let [paragraph (create-paragraph block-text)]
-    (append-node zt paragraph)))
+    (t/append-child zt paragraph)))
 
 (defn anppend-text [zt text]
   (let [text (create-inline-markup-text text)]
-    (append-node zt text)))
+    (t/append-child zt text)))
 
 (defn body->text
   [ctx _]
@@ -843,45 +809,45 @@
              :children [(create-table-body)]}))
 
 (defn move-to-table-body [zt]
-  (if (-> zt z/node :type (= :table))
-    (loop [table-child (-> zt z/down)]
-      (cond (-> table-child z/node :type (= :table-body)) table-child
+  (if (-> zt t/node :type (= :table))
+    (loop [table-child (-> zt t/down)]
+      (cond (-> table-child t/node :type (= :table-body)) table-child
             (nil? table-child) nil
-            :else (recur (z/right table-child))))
+            :else (recur (t/right table-child))))
     nil))
 
 (defn move-to-table-header [zt]
-  (if (-> zt z/node :type (= :table))
-    (loop [table-child (-> zt z/down)]
-      (cond (-> table-child z/node :type (= :table-header)) table-child
+  (if (-> zt t/node :type (= :table))
+    (loop [table-child (-> zt t/down)]
+      (cond (-> table-child t/node :type (= :table-header)) table-child
             (nil? table-child) nil
-            :else (recur (z/right table-child))))
+            :else (recur (t/right table-child))))
     nil))
 
 (defn move-to-body-row [zt id]
   (let [table-body-zt (move-to-table-body zt)]
-    (loop [row-zt (z/down table-body-zt)]
+    (loop [row-zt (t/down table-body-zt)]
       (if-not (nil? row-zt)
-        (if (-> row-zt z/node :id (= id))
+        (if (-> row-zt t/node :id (= id))
           row-zt
-          (recur (z/right row-zt)))
+          (recur (t/right row-zt)))
         nil))))
 
 (defn append-table-body-row [zt row-id]
-  (let [table (z/node zt)
+  (let [table (t/node zt)
         height (:height table)]
     (if (< row-id (dec height))
       (let [row (create-table-row row-id)
             existing-row (move-to-body-row zt row-id)]
         (if (nil? existing-row)
           (let [table-body (move-to-table-body zt)]
-            (-> table-body (append-node row)
-                z/up))
+            (-> table-body (t/append-child row)
+                t/up))
           zt))
       zt)))
 
 (defn append-table-col-id [zt col-id]
-  (z/edit zt
+  (t/edit zt
           (fn [table]
             (let [col-ids (:col-ids table)
                   width (:width table)]
@@ -892,8 +858,8 @@
 (defn append-table-body-cell [zt cell]
   (let [row-id (:top cell)
         row-zt (move-to-body-row zt row-id)]
-    (-> row-zt (append-node cell)
-        z/up z/up)))
+    (-> row-zt (t/append-child cell)
+        t/up t/up)))
 
 (defn ^:private scan-up [zt lines top left bottom right]
   (loop [table-zt zt
@@ -926,7 +892,7 @@
       [table-zt nil])))
 
 (defn ^:private scan-down [zt lines top left right]
-  (let [table (z/node zt)
+  (let [table (t/node zt)
         height (:height table)]
     (loop [table-zt zt
            row-id (inc top)]
@@ -943,7 +909,7 @@
         [zt nil]))))
 
 (defn ^:private scan-right [zt lines top left]
-  (let [table (z/node zt)
+  (let [table (t/node zt)
         width (:width table)]
     (loop [table-zt zt
            col-id (inc left)]
@@ -965,19 +931,19 @@
 (defn ^:private sort-table-body-rows [zt]
   (-> zt
       move-to-table-body
-      (z/edit
+      (t/edit
        (fn [table-body]
          (update table-body :children #(->> % (sort-by :id) vec))))
-      z/up))
+      t/up))
 
 (defn ^:private sort-table-header-rows [zt]
-  (if (-> zt z/node :header-idx)
+  (if (-> zt t/node :header-idx)
     (-> zt
         move-to-table-header
-        (z/edit
+        (t/edit
          (fn [table-body]
            (update table-body :children #(->> % (sort-by :id) vec))))
-        z/up)
+        t/up)
     zt))
 
 (defn ^:private table-body-cells [table]
@@ -1001,7 +967,7 @@
           (+ cells-area table-height table-width -1))))
 
 (defn ^:private split-header-and-body-rows [zt]
-  (let [table (z/node zt)]
+  (let [table (t/node zt)]
     (if-let [header-id (:header-idx table)]
       (let [table-header (some #(if (= (:type %) :table-header) %) (:children table))
             table-body (some #(if (= (:type %) :table-body) %) (:children table))
@@ -1012,11 +978,11 @@
             updated-table-body (update table-body :children
                                        #(vec (set/difference (apply sorted-set-by row-comparator %)
                                                              (apply sorted-set-by row-comparator header-rows))))]
-        (z/edit zt #(assoc % :children [updated-table-header updated-table-body])))
+        (t/edit zt #(assoc % :children [updated-table-header updated-table-body])))
       zt)))
 
 (defn scan-table-cells [zt lines]
-  (let [table (z/node zt)
+  (let [table (t/node zt)
         {width :width height :height pos :pos} table
         init-table-zt zt]
     (loop [table-zt init-table-zt
@@ -1037,13 +1003,13 @@
                                           (conj [bottom left]))
                            distinct sort reverse vec)))
               (recur table-zt (-> corners sort reverse vec pop)))))
-        (if (-> table-zt z/node badform-table?)
-          (z/replace table-zt (create-error-malformed-table lines pos "Parse incomplete."))
+        (if (-> table-zt t/node badform-table?)
+          (t/replace table-zt (create-error-malformed-table lines pos "Parse incomplete."))
           (-> table-zt
               split-header-and-body-rows
               sort-table-header-rows
               sort-table-body-rows
-              z/up))))))
+              t/up))))))
 
 (defn ^:private remove-table-header-line [lines header-idx]
   (if header-idx
@@ -1055,21 +1021,21 @@
 (defn scan-table-block [zt lines pos]
   (let [[width height] (text-block-size lines)
         init-table (create-grid-table width height pos)
-        init-table-zt (-> zt (append-node init-table) move-to-latest-child)
+        init-table-zt (-> zt (t/append-child init-table) t/move-to-latest-child)
         header-ids (find-grid-table-header-ids lines)]
     (case (count header-ids)
       0 (scan-table-cells init-table-zt lines)
       1 (let [header-idx (first header-ids)
               non-header-lines (remove-table-header-line lines header-idx)]
           (-> init-table-zt
-              (z/edit #(assoc % :header-idx header-idx))
-              (append-node (create-table-header))
-              ;;(append-node (create-table-body))
+              (t/edit #(assoc % :header-idx header-idx))
+              (t/append-child (create-table-header))
+              ;;(t/append-child (create-table-body))
               (scan-table-cells non-header-lines)))
       (let [msg (str "Multiple head/body row separators (table lines "
                      (string/join ", " header-ids)
                      "); only one allowed.")]
-        (z/replace init-table-zt (create-error-malformed-table lines pos msg))))))
+        (t/replace init-table-zt (create-error-malformed-table lines pos msg))))))
 
 (defn isolate-grid-table [ctx]
   (let [next-ctx (extract-table-block ctx)]
@@ -1098,7 +1064,7 @@
         {current-idx :current-idx pos :pos} ctx]
     (-> ctx
         pop-state
-        (update-zt z/up)
+        (update-zt t/up)
         (update-zt append-applicable-error-bullet-no-end-blank-line
                    pos
                    current-idx
@@ -1116,7 +1082,7 @@
 
 (defn bullet->bullet
   [ctx [_ style spacing text]]
-  (let [bullet-list (-> ctx :zt z/node)
+  (let [bullet-list (-> ctx :zt t/node)
         indent (inc (count spacing))
         next-ctx (read-indented-lines
                   (-> ctx
@@ -1131,7 +1097,7 @@
           (update-zt append-bullet-item indented-lines indent pos)
           clear-buffers)
       (-> next-ctx
-          (update-zt z/up)
+          (update-zt t/up)
           (update-zt append-applicable-error-bullet-no-end-blank-line
                      pos
                      idx
@@ -1184,25 +1150,18 @@
            [(peek %) match])
         (-> states state :transitions)))
 
-(defn zip-node [node]
-  (z/zipper map? ;;#(not= (:type %) :text)
-            #(-> % :children seq)
-            (fn [n children]
-              (assoc n :children (vec children)))
-            node))
-
 (defn single-paragraph-document? [zt]
-  (let [children (-> zt up-to-root z/children)]
+  (let [children (-> zt t/up-to-root t/children)]
     (and (= (count children) 1)
          (-> children first :type (= :paragraph)))))
 
 
 (defn unwrap-root-paragraph [zt]
-  (let [paragraph (-> zt up-to-root z/down)
-        children (z/children paragraph)]
+  (let [paragraph (-> zt t/up-to-root t/down)
+        children (t/children paragraph)]
     (reduce (fn [t child]
-              (z/append-child t child))
-            (-> paragraph z/remove) children)))
+              (t/append-child t child))
+            (-> paragraph t/remove) children)))
 
 (defn unwrap-single-indented-document
   "If the indented document contains a single paragraph
@@ -1222,7 +1181,7 @@
 ;; Context Function
 
 (defn process-lines [lines node pos]
-  (let [init-zt (zip-node node)
+  (let [init-zt (t/node->zipper-tree node)
         init-ctx (make-context lines init-zt :body pos)]
     (loop [ctx init-ctx]
       (if-not (eof? ctx)
@@ -1231,7 +1190,7 @@
             clean-up-buffers
             unwrap-single-indented-document
             :zt
-            z/root)))))
+            t/root)))))
 
 (defn process-document [document-lines]
   (let [root-node (n/create {:type :root :children []})

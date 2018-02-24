@@ -8,11 +8,14 @@ Usage
 -----
 
 Document Structure
+
 - Document `Checked`
 - Section `Checked`
   + Title `Checked`
 - Transition `Checked`
+
 Document Body
+
 - Paragraph `Checked`
 - Inline markup
   + Emphasis

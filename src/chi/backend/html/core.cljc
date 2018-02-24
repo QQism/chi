@@ -1,6 +1,4 @@
-(ns chi.backend.html.core
-  (:require [clojure.zip :as z])
-  (:import [clojure.lang APersistentMap APersistentVector]))
+(ns chi.backend.html.core)
 
 (def nodes-tags {:root nil
                  :paragraph "p"
@@ -28,13 +26,6 @@
 
 (defn close-tag [tag]
   (if tag (str "</" tag ">") ""))
-
-(defn zip-node [node]
-  (z/zipper map?
-            #(-> % :children seq)
-            (fn [n children]
-              (assoc n :children (vec children)))
-            node))
 
 ;; To avoid stack over flow if the ast is nested too deeply,
 ;; This implementation uses stacks of nodes and doms to store data while calling `recur`
@@ -65,76 +56,3 @@
 
 (defn ast->html [ast opts]
   (nodes->html [ast] []))
-
-(defn ast->html-1 [ast]
-  (let [tag (-> ast :type nodes-tags)
-        children (:children ast)]
-    (if children (str (open-tag tag)
-                 (reduce #(str %1 (ast->html-1 %2)) "" children)
-                 (close-tag tag))
-        (:value ast)
-        )))
-
-(defprotocol RenderHTML
-  (render [_])
-  (renders [_]))
-
-(extend-protocol RenderHTML
-  APersistentMap
-  (render [m]
-    (let [tag (-> m :type nodes-tags)
-          children (:children m)]
-      (if children (str (open-tag tag)
-                        (renders children)
-                        (close-tag tag))
-          (:value m))))
-  APersistentVector
-  (renders [v]
-    (apply str (map render v))
-    ;;(reduce #(str %1 (render %2)) "" v)
-    )
-  nil
-  (render [_] ""))
-
-(def test-ast {:type :root
-               :children[{:type :paragraph :children [{:type :text :value "Hello"}]}
-                         {:type :paragraph :children [{:type :text :value "World"}]}
-                         {:type :bullet-list
-                          :children [{:type :bullet-item
-                                      :children [{:type :text :value "First Item"}]}
-                                     {:type :bullet-item
-                                      :children [{:type :paragraph :children [{:type :text :value "Second Item Para"}]}
-                                                 {:type :paragraph :children [{:type :text :value "Another Para"}]}]}
-                                     {:type :bullet-item
-                                      :children [{:type :text :value "Third Item"}]}]}
-                         {:type :paragraph :children []}
-                         ]})
-
-(defn create-deep-ast [ast]
-  (loop [t (zip-node ast)
-         c 0]
-    (if (< c 1000);;(< c 648)
-      (let []
-        (recur (-> t (z/append-child ast) z/down z/right) (inc c)))
-      (z/root t))))
-
-
-(time (doall
-       (let [node ;; (create-deep-ast test-ast)
-             test-ast
-             ]
-         (ast->html node nil))
-       ))
-
-(time (doall
-       (let [node ;; (create-deep-ast test-ast)
-             test-ast
-             ]
-         (render node))
-       ))
-
-(time (doall
-       (let [node ;;(create-deep-ast test-ast)
-             test-ast
-             ]
-         (ast->html-1 node))))

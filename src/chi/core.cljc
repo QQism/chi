@@ -5,7 +5,7 @@
             [chi.context :as c]
             [chi.node :as n]
             [chi.tree :as t]
-            [chi.error :as err]
+            [chi.frontend.error :as err]
             [chi.frontend.el.preserve :as preserve]
             [chi.frontend.el.paragraph :as paragraph]
             [chi.frontend.el.section :as section]

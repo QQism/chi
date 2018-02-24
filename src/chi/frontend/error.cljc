@@ -1,5 +1,5 @@
-(ns chi.error
-  (:require [chi.node :as n]
+(ns chi.frontend.error
+  (:require [chi.frontend.node :as n]
             [chi.frontend.el.preserve :as preserve]
             [chi.frontend.el.paragraph :as paragraph]))
 

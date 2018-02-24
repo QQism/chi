@@ -3,7 +3,7 @@
             [chi.node :as n]
             [chi.tree :as t]
             [chi.frontend.el.verse :as verse]
-            [chi.error :as err]))
+            [chi.frontend.error :as err]))
 
 (def non-alphanum-7-bit #"([\!-\/\:-\@\[-\`\{-\~])")
 

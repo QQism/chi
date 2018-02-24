@@ -1,4 +1,4 @@
-(ns chi.node)
+(ns chi.frontend.node)
 
 (def ^{:private true :const true} uid-prefix "AST_NODE_")
 

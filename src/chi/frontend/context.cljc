@@ -1,5 +1,5 @@
-(ns chi.context
-  (:require [chi.error :as err]))
+(ns chi.frontend.context
+  (:require [chi.frontend.error :as err]))
 
 (defprotocol IReadingLines
   (current-line [_])

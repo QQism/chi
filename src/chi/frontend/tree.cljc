@@ -1,4 +1,4 @@
-(ns chi.tree
+(ns chi.frontend.tree
   (:refer-clojure :exclude [replace remove])
   (:require [clojure.zip :as z]))
 

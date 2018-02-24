@@ -2,7 +2,8 @@
 chi
 ===
 
-A restructuredtext compiler which generates HTML content Clojure/ClojureScript/JavaScript
+A restructuredtext compiler which generates HTML content for
+JavsScript, ClojureScript, and Clojure
 
 Usage
 -----

@@ -12,7 +12,8 @@
             [chi.frontend.el.section :as section]
             [chi.frontend.el.transition :as transition]
             [chi.frontend.el.table :as table]
-            [chi.frontend.el.verse :as verse])
+            [chi.frontend.el.verse :as verse]
+            [chi.frontend.el.blockquote :as blockquote])
   #?(:clj (:import [chi.frontend.context DocumentContext])))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871

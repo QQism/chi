@@ -11,11 +11,12 @@
             [chi.frontend.el.paragraph :as paragraph]
             [chi.frontend.el.section :as section]
             [chi.frontend.el.transition :as transition]
+            [chi.frontend.el.table :as table]
             [chi.frontend.el.verse :as verse])
   #?(:clj (:import [chi.frontend.context DocumentContext])))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
-(defn ^:declared process-lines [lines node pos])
+(defn ^:declared parse [lines node pos])
 (defn ^:declared next-transition [state line])
 
 (defprotocol IParserTransit
@@ -191,7 +192,7 @@
         raw-indent (+ indent col)
         blockquote (create-blockquote raw-indent)
         new-pos [row raw-indent]
-        processed-blockquote (process-lines lines blockquote new-pos)]
+        processed-blockquote (parse lines blockquote new-pos)]
     (-> zt
         (t/append-child processed-blockquote))))
 
@@ -206,7 +207,7 @@
         raw-indent (+ col indent)
         bullet-item (create-bullet-item raw-indent)
         new-pos [row raw-indent]
-        processed-bullet-item (process-lines lines bullet-item new-pos)]
+        processed-bullet-item (parse lines bullet-item new-pos)]
     (-> zt (t/append-child processed-bullet-item))))
 
 (defn append-preserve-text [zt lines]
@@ -214,16 +215,8 @@
         preserve-text (preserve/create block-text)]
     (-> zt (t/append-child preserve-text))))
 
-(defn create-error-malformed-table
-  ([lines pos description]
-   (let [block-text (string/join "\r\n" lines)
-         msg (string/join " " ["Malformed table." description])]
-     (err/create (string/trimr msg) ::err/error pos block-text)))
-  ([lines pos]
-   (create-error-malformed-table lines pos "")))
-
 (defn append-error-malformed-table [zt pos lines]
-  (let [error (create-error-malformed-table lines pos)]
+  (let [error (table/error-malformed lines pos)]
     (append-error zt (error))))
 
 (defn body->blank [ctx _]
@@ -577,321 +570,12 @@
           ctx))
       ctx)))
 
-(defn ^:private find-grid-table-header-ids [lines]
-  (reduce-kv (fn [heads idx line]
-               (if (patt/match? :grid-table-head-sep line)
-                 (conj heads idx)
-                 heads))
-             [] lines))
-
 (defn ^:private extract-table-block [ctx]
   (-> ctx
       extract-text-block
       mark-table-left-edge
       mark-table-bottom
       validate-table-right-edge))
-
-(defn ^:private text-block-size
-  "Get the size of the square block of text"
-  [lines]
-  [(-> lines (nth 0) count) (count lines)])
-
-(defn nth-2d [lines row col]
-  (-> lines (nth row) (nth col)))
-
-(defn line-indent [line]
-  (if-let [match (patt/match :indent line)]
-    (let [[_ spaces _] match]
-      (count spaces))
-    0))
-
-(defn ^:private trivial-block-indents [lines]
-  (or (reduce (fn [m line]
-                (if-not (empty? line)
-                  (let [indent (line-indent line)]
-                    (if m (min m indent) indent))
-                  m))
-              nil lines)
-      0))
-
-(defn strip-indents [lines indent]
-  (reduce (fn [xs line]
-            (if-not (empty? line)
-              (conj xs (subs line indent))
-              (conj xs line)))
-          [] lines))
-
-(defn ^:private get-cell-content
-  [block [top left bottom right]]
-  (let [t (+ top 1)
-        l (+ left 1)
-        width (- right left)
-        height (- bottom t)
-        rows (subvec block t bottom)]
-    (reduce (fn [lines line]
-              (let [cell-line (-> line (subs l right) string/trimr)]
-                (conj lines cell-line)))
-            [] rows)))
-
-(defn create-table-cell [[top left bottom right] content [file-row file-col]]
-  (let [cell (n/create {:type :cell
-                        :top top
-                        :left left
-                        :width (- right left 1)
-                        :height (- bottom top 1)
-                        :children []})
-        trivial-indents (trivial-block-indents content)
-        stripped-content (strip-indents content trivial-indents)
-        pos [(+ file-row top 1) (+ left file-col 1)]]
-    (process-lines stripped-content cell pos)))
-
-(defn create-table-row [id]
-  (n/create {:type :row :id id :children []}))
-
-(defn create-table-header []
-  (n/create {:type :table-header :children []}))
-
-(defn create-table-body []
-  (n/create {:type :table-body :children [(create-table-row 0)]}))
-
-(defn create-grid-table [width height pos]
-  (n/create {:type :table
-             :style :grid
-             :pos pos
-             :width width
-             :height height
-             :col-ids (sorted-set 0)
-             :header-idx nil
-             :children [(create-table-body)]}))
-
-(defn move-to-table-body [zt]
-  (if (-> zt t/node :type (= :table))
-    (loop [table-child (-> zt t/down)]
-      (cond (-> table-child t/node :type (= :table-body)) table-child
-            (nil? table-child) nil
-            :else (recur (t/right table-child))))
-    nil))
-
-(defn move-to-table-header [zt]
-  (if (-> zt t/node :type (= :table))
-    (loop [table-child (-> zt t/down)]
-      (cond (-> table-child t/node :type (= :table-header)) table-child
-            (nil? table-child) nil
-            :else (recur (t/right table-child))))
-    nil))
-
-(defn move-to-body-row [zt id]
-  (let [table-body-zt (move-to-table-body zt)]
-    (loop [row-zt (t/down table-body-zt)]
-      (if-not (nil? row-zt)
-        (if (-> row-zt t/node :id (= id))
-          row-zt
-          (recur (t/right row-zt)))
-        nil))))
-
-(defn append-table-body-row [zt row-id]
-  (let [table (t/node zt)
-        height (:height table)]
-    (if (< row-id (dec height))
-      (let [row (create-table-row row-id)
-            existing-row (move-to-body-row zt row-id)]
-        (if (nil? existing-row)
-          (let [table-body (move-to-table-body zt)]
-            (-> table-body (t/append-child row)
-                t/up))
-          zt))
-      zt)))
-
-(defn append-table-col-id [zt col-id]
-  (t/edit zt
-          (fn [table]
-            (let [col-ids (:col-ids table)
-                  width (:width table)]
-              (if-not (or (contains? col-ids col-id) (>= col-id (dec width)))
-                (update table :col-ids #(conj %1 col-id))
-                table)))))
-
-(defn append-table-body-cell [zt cell]
-  (let [row-id (:top cell)
-        row-zt (move-to-body-row zt row-id)]
-    (-> row-zt (t/append-child cell)
-        t/up t/up)))
-
-(defn ^:private scan-up [zt lines top left bottom right]
-  (loop [table-zt zt
-         row-id (dec bottom)]
-    (if-not (< row-id top)
-      (let [c (nth-2d lines row-id left)]
-        (cond (> row-id top) (case c
-                               \+ (recur (append-table-body-row zt row-id) (dec row-id))
-                               \| (recur table-zt (dec row-id))
-                               [table-zt nil])
-              (= row-id top) (if (= c \+)
-                               [table-zt [top left bottom right]]
-                               [table-zt nil])
-              :else [table-zt nil]))
-      [table-zt nil])))
-
-(defn ^:private scan-left [zt lines top left bottom right]
-  (loop [table-zt zt
-         col-id (dec right)]
-    (if-not (< col-id left)
-      (let [c (nth-2d lines bottom col-id)]
-        (cond (> col-id left) (case c
-                                \+ (recur (append-table-col-id zt col-id) (dec col-id))
-                                \- (recur table-zt (dec col-id))
-                                [table-zt nil])
-              (= col-id left) (if (= c \+)
-                                (scan-up table-zt lines top left bottom right)
-                                [table-zt nil])
-              :else [table-zt nil]))
-      [table-zt nil])))
-
-(defn ^:private scan-down [zt lines top left right]
-  (let [table (t/node zt)
-        height (:height table)]
-    (loop [table-zt zt
-           row-id (inc top)]
-      (if (< row-id height)
-        (let [c (nth-2d lines row-id right)]
-          (case c
-            \+ (let [[next-table-zt cell-pos] (-> zt (append-table-body-row row-id)
-                                                  (scan-left lines top left row-id right))]
-                 (if-not cell-pos
-                   (recur next-table-zt (inc row-id))
-                   [next-table-zt cell-pos]))
-            \| (recur table-zt (inc row-id))
-            [zt nil]))
-        [zt nil]))))
-
-(defn ^:private scan-right [zt lines top left]
-  (let [table (t/node zt)
-        width (:width table)]
-    (loop [table-zt zt
-           col-id (inc left)]
-      (if (< col-id width)
-        (let [c (nth-2d lines top col-id)]
-          (case c
-            \+ (let [[next-table-zt cell-pos] (-> zt (append-table-col-id col-id)
-                                                  (scan-down lines top left col-id))]
-                 (if-not cell-pos
-                   (recur next-table-zt (inc col-id))
-                   [next-table-zt cell-pos]))
-            \- (recur table-zt (inc col-id))
-            [zt nil]))
-        [zt nil]))))
-
-(defn ^:private valid-top-left-cell-corner? [[top left] [width height]]
-  (and (not= top (dec height)) (not= left (dec width))))
-
-(defn ^:private sort-table-body-rows [zt]
-  (-> zt
-      move-to-table-body
-      (t/edit
-       (fn [table-body]
-         (update table-body :children #(->> % (sort-by :id) vec))))
-      t/up))
-
-(defn ^:private sort-table-header-rows [zt]
-  (if (-> zt t/node :header-idx)
-    (-> zt
-        move-to-table-header
-        (t/edit
-         (fn [table-body]
-           (update table-body :children #(->> % (sort-by :id) vec))))
-        t/up)
-    zt))
-
-(defn ^:private table-body-cells [table]
-  (let [table-body (some #(if (= (:type %) :table-body) %) (:children table))
-        rows (:children table-body)]
-    (reduce (fn [cells row]
-              (apply conj cells (:children row))) [] rows)))
-
-(defn ^:private table-cells-area [cells]
-  (let [cell-sizes (map #(identity [(:width %) (:height %)]) cells)]
-    (reduce (fn [area [width height]]
-              (+ area (* (inc width) (inc height)))) 0 cell-sizes)))
-
-(defn ^:private badform-table? [table]
-  (let [cells (table-body-cells table)
-        cells-area (table-cells-area cells)
-        table-width (:width table)
-        table-height (:height table)
-        table-area (* table-width table-height)]
-    (not= table-area
-          (+ cells-area table-height table-width -1))))
-
-(defn ^:private split-header-and-body-rows [zt]
-  (let [table (t/node zt)]
-    (if-let [header-id (:header-idx table)]
-      (let [table-header (some #(if (= (:type %) :table-header) %) (:children table))
-            table-body (some #(if (= (:type %) :table-body) %) (:children table))
-            body-rows (:children table-body)
-            header-rows (filter #(< (:id %) header-id) body-rows)
-            updated-table-header (assoc table-header :children header-rows)
-            row-comparator #(< (:id %1) (:id %2))
-            updated-table-body (update table-body :children
-                                       #(vec (set/difference (apply sorted-set-by row-comparator %)
-                                                             (apply sorted-set-by row-comparator header-rows))))]
-        (t/edit zt #(assoc % :children [updated-table-header updated-table-body])))
-      zt)))
-
-(defn scan-table-cells [zt lines]
-  (let [table (t/node zt)
-        {width :width height :height pos :pos} table
-        init-table-zt zt]
-    (loop [table-zt init-table-zt
-           corners [[0 0]]]
-      (if-not (empty? corners)
-        (let [[top left] (peek corners)
-              next-corners (pop corners)]
-          (let [[next-table-zt cell-pos] (scan-right table-zt lines top left)]
-            (if (and (vector? cell-pos) (= (count cell-pos) 4))
-              (let [[_ _ bottom right] cell-pos
-                    cell-content (get-cell-content lines cell-pos)
-                    cell-node (create-table-cell cell-pos cell-content pos)]
-                (recur (-> next-table-zt (append-table-body-cell cell-node))
-                       (-> next-corners (cond->
-                                            (valid-top-left-cell-corner? [top right] [width height])
-                                          (conj [top right])
-                                          (valid-top-left-cell-corner? [bottom left] [width height])
-                                          (conj [bottom left]))
-                           distinct sort reverse vec)))
-              (recur table-zt (-> corners sort reverse vec pop)))))
-        (if (-> table-zt t/node badform-table?)
-          (t/replace table-zt (create-error-malformed-table lines pos "Parse incomplete."))
-          (-> table-zt
-              split-header-and-body-rows
-              sort-table-header-rows
-              sort-table-body-rows
-              t/up))))))
-
-(defn ^:private remove-table-header-line [lines header-idx]
-  (if header-idx
-    (assoc lines header-idx (-> lines
-                                (nth header-idx)
-                                (string/replace "=" "-")))
-    lines))
-
-(defn scan-table-block [zt lines pos]
-  (let [[width height] (text-block-size lines)
-        init-table (create-grid-table width height pos)
-        init-table-zt (-> zt (t/append-child init-table) t/move-to-latest-child)
-        header-ids (find-grid-table-header-ids lines)]
-    (case (count header-ids)
-      0 (scan-table-cells init-table-zt lines)
-      1 (let [header-idx (first header-ids)
-              non-header-lines (remove-table-header-line lines header-idx)]
-          (-> init-table-zt
-              (t/edit #(assoc % :header-idx header-idx))
-              (t/append-child (create-table-header))
-              ;;(t/append-child (create-table-body))
-              (scan-table-cells non-header-lines)))
-      (let [msg (str "Multiple head/body row separators (table lines "
-                     (string/join ", " header-ids)
-                     "); only one allowed.")]
-        (t/replace init-table-zt (create-error-malformed-table lines pos msg))))))
 
 (defn isolate-grid-table [ctx]
   (let [next-ctx (extract-table-block ctx)]
@@ -904,7 +588,7 @@
         [row col] pos
         table-pos [(- row (count buffers)) col]]
     (cond-> next-ctx
-      (not-empty buffers) (update-zt scan-table-block buffers table-pos)
+      (not-empty buffers) (update-zt table/scan-block buffers table-pos parse)
       (has-no-end-blank-line? lines current-idx) (update-zt append-error-table-no-end-blank-line pos)
       :true c/clear-buffers)))
 
@@ -1030,7 +714,7 @@
 ;; Input: ctx transition match (derived from string) -> new-ctx
 ;; Context Function
 
-(defn process-lines [lines node pos]
+(defn parse [lines node pos]
   (let [init-zt (t/node->zipper-tree node)
         init-ctx (c/create lines init-zt :body pos)]
     (loop [ctx init-ctx]
@@ -1045,4 +729,4 @@
 (defn lines->ast [document-lines]
   (let [root-node (n/create {:type :root :children []})
         pos [0 0]]
-    (process-lines document-lines root-node pos)))
+    (parse document-lines root-node pos)))

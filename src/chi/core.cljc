@@ -5,4 +5,4 @@
 
 (defn compile [lines opts]
   (let []
-    (-> lines lines->ast ast->html)))
+    (-> lines lines->ast (ast->html opts))))

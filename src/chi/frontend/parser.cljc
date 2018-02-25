@@ -7,13 +7,14 @@
             [chi.frontend.tree :as t]
             [chi.frontend.error :as err]
             [chi.frontend.patterns :as patt]
-            [chi.frontend.el.preserve :as preserve]
+            [chi.frontend.el.blockquote :as blockquote]
+            [chi.frontend.el.bullet :as bullet]
             [chi.frontend.el.paragraph :as paragraph]
+            [chi.frontend.el.preserve :as preserve]
             [chi.frontend.el.section :as section]
-            [chi.frontend.el.transition :as transition]
             [chi.frontend.el.table :as table]
-            [chi.frontend.el.verse :as verse]
-            [chi.frontend.el.blockquote :as blockquote])
+            [chi.frontend.el.transition :as transition]
+            [chi.frontend.el.verse :as verse])
   #?(:clj (:import [chi.frontend.context DocumentContext])))
 
 ;; https://dev.clojure.org/jira/browse/CLJS-1871
@@ -41,21 +42,6 @@
 
 (defn update-zt [ctx f & args]
   (update ctx :zt #(apply f % args)))
-
-(defn create-blockquote [indent]
-  (n/create {:type :blockquote
-             :indent indent
-             :children []}))
-
-(defn create-bullet-list [style]
-  (n/create {:type :bullet-list
-             :style style
-             :children []}))
-
-(defn create-bullet-item [indent]
-  (n/create {:type :bullet-item
-             :indent indent
-             :children []}))
 
 (defn append-error [zt error]
   (t/append-child zt error))
@@ -191,14 +177,14 @@
 (defn append-blockquote-body->indent [zt lines indent pos]
   (let [[row col] pos
         raw-indent (+ indent col)
-        blockquote (create-blockquote raw-indent)
+        blockquote (blockquote/create raw-indent)
         new-pos [row raw-indent]
         processed-blockquote (parse lines blockquote new-pos)]
     (-> zt
         (t/append-child processed-blockquote))))
 
 (defn append-bullet-list [zt style]
-  (let [bullet-list (create-bullet-list style)]
+  (let [bullet-list (bullet/create-list style)]
     (-> zt
         (t/append-child bullet-list)
         t/move-to-latest-child)))
@@ -206,7 +192,7 @@
 (defn append-bullet-item [zt lines indent pos]
   (let [[row col] pos
         raw-indent (+ col indent)
-        bullet-item (create-bullet-item raw-indent)
+        bullet-item (bullet/create-item raw-indent)
         new-pos [row raw-indent]
         processed-bullet-item (parse lines bullet-item new-pos)]
     (-> zt (t/append-child processed-bullet-item))))
@@ -578,7 +564,7 @@
       mark-table-bottom
       validate-table-right-edge))
 
-(defn isolate-grid-table [ctx]
+(defn ^:private isolate-grid-table [ctx]
   (let [next-ctx (extract-table-block ctx)]
     next-ctx))
 

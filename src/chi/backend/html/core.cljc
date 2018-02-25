@@ -1,36 +1,35 @@
 (ns chi.backend.html.core)
 
-(def nodes-tags {:root nil
-                 :paragraph "p"
-                 :table "table"
-                 :table-body "tbody"
-                 :table-header "thead"
-                 :row "tr"
-                 :cell "td"
-                 :bullet-list "ul"
-                 :bullet-item "li"
-                 :blockquote "blockquote"
-                 :section "section"
-                 :text nil
-                 :strong-emphasis "string"
-                 :emphasis "em"})
+(def ^:private nodes-tags {:root nil
+                           :paragraph "p"
+                           :table "table"
+                           :table-body "tbody"
+                           :table-header "thead"
+                           :row "tr"
+                           :cell "td"
+                           :bullet-list "ul"
+                           :bullet-item "li"
+                           :blockquote "blockquote"
+                           :section "section"
+                           :text nil
+                           :strong-emphasis "string"
+                           :emphasis "em"})
 
 (defn ^:private html-attrs [opts]
   (reduce-kv (fn [s k v] (str s " " (name k) "=\"" v "\"") ) "" opts))
 
-(defn open-tag
+(defn ^:private open-tag
   ([tag opts]
    (if tag (str "<" tag (html-attrs opts) ">") ""))
   ([tag]
    (open-tag tag nil)))
 
-(defn close-tag [tag]
+(defn ^:private close-tag [tag]
   (if tag (str "</" tag ">") ""))
 
 ;; To avoid stack over flow if the ast is nested too deeply,
 ;; This implementation uses stacks of nodes and doms to store data while calling `recur`
-(defn nodes->html
-  ""
+(defn ^:private nodes->html
   [nodes doms]
   (let [ast (peek nodes)]
     (if-not (nil? ast)

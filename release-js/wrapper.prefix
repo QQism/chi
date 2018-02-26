@@ -1,0 +1,33 @@
+/**
+ * Chi
+ * Copyright 2018 Quang Quach
+ * All rights reserved.
+ * Licensed under the MIT licence
+ */
+
+(function (definition) {
+    // This file will function properly as a <script> tag, or a module
+    // using CommonJS and NodeJS or RequireJS module formats. In
+    // Common/Node/RequireJS, the module exports the mori API and when
+    // executed as a simple <script>, it creates a mori global
+    // instead.
+
+    // Wrapper gratefully adapted from:
+    // https://github.com/kriskowal/q/blob/v1/q.js
+    // https://github.com/swannodette/mori/blob/master/support/wrapper.js
+    // https://github.com/tonsky/datascript/blob/master/release-js/wrapper.prefix
+
+    // CommonJS
+    if (typeof exports === "object") {
+        module.exports = definition();
+
+    // RequireJS
+    } else if (typeof define === "function" && define.amd) {
+        define(definition);
+
+    // <script>
+    } else {
+        chi = definition();
+    }
+})(function () {
+    return function () {

@@ -63,41 +63,45 @@
                    :children
                    [{:type :text,:value "Another Nested Title"}],:level 2}
                   {:type :paragraph,:children [{:type :text,:value "Another nested content"}]}]}]}]}]
-    (is (= ["<section>"
+    (is (= ["<div class=\"section\" id=\"first-title\">"
             "  <h1>"
             "    First Title"
             "  </h1>"
             "  <p>"
             "    First paragraph content"
             "  </p>"
-            "  <section>"
+            "  <div class=\"section\" id=\"nested-title\">"
             "    <h2>"
             "      Nested Title"
             "    </h2>"
             "    <p>"
             "      Nested content"
             "    </p>"
-            "    <section>"
+            "    <div class=\"section\" id=\"nested-nested-title\">"
             "      <h3>"
             "        Nested Nested Title"
             "      </h3>"
-            "    </section>"
-            "  </section>"
-            "</section>"
-            "<section>"
+            "    </div>"
+            "  </div>"
+            "</div>"
+            "<div class=\"section\" id=\"second-title\">"
             "  <h1>"
             "    Second Title"
             "  </h1>"
             "  <p>"
             "    Second paragraph content"
             "  </p>"
-            "  <section>"
+            "  <div class=\"section\" id=\"another-nested-title\">"
             "    <h2>"
             "      Another Nested Title"
             "    </h2>"
             "    <p>"
             "      Another nested content"
             "    </p>"
-            "  </section>"
-            "</section>"]
+            "  </div>"
+            "</div>"]
            (string/split (ast->html ast {:pretty true}) #"\r\n")))))
+
+(deftest grid-table
+  (let [ast {}]
+    ))

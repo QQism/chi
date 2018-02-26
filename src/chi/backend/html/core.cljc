@@ -41,7 +41,9 @@
   (map->Tag {:name "blockquote"}))
 
 (defmethod create-tag :section [node opts]
-  (map->Tag {:name "section"}))
+  (let [name (:name node)]
+    (map->Tag {:name "div"
+               :attrs {:class "section" :id name}})))
 
 (defmethod create-tag :header [node opts]
   (let [level (:level node)]
@@ -50,7 +52,7 @@
 (defmethod create-tag :text [node opts]
   (map->Tag {:name nil}))
 
-(defmethod create-tag :strong-emphasis [node opts] 
+(defmethod create-tag :strong-emphasis [node opts]
   (map->Tag {:name "strong"}))
 
 (defmethod create-tag :emphasis [node opts]
@@ -61,8 +63,8 @@
 
 (defn ^:private open-tag
   ([tag]
-   (let [{name :name opts :opts} tag]
-     (if name (str "<" name (html-attrs opts) ">") ""))))
+   (let [{name :name attrs :attrs} tag]
+     (if name (str "<" name (html-attrs attrs) ">") ""))))
 
 (defn ^:private close-tag [tag]
   (let [{name :name} tag]

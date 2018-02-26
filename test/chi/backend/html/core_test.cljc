@@ -35,8 +35,7 @@
               "    Second Item"
               "  </li>"
               "</ul>"]
-             (string/split (ast->html ast {:pretty true}) #"\r\n")
-             )))
+             (string/split (ast->html ast {:pretty true}) #"\r\n"))))
     (testing "without pretty format"
       (is (= "<p>Lorem Ipsum</p><ul><li>First Item</li><li>Second Item</li></ul>"
              (ast->html ast nil))))))

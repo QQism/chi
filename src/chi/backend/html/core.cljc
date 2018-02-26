@@ -30,11 +30,13 @@
   (if tag (str "</" tag ">") ""))
 
 (defn ^:private pretty-html [otag ctag doms]
-  (let[indented-doms (map #(string/replace % "\r\n" "\r\n  ") doms)]
-    (str otag
-         (reduce #(str %1 "\r\n  " %2) "" indented-doms)
-         "\r\n"
-         ctag)))
+  (if (not-empty otag)
+    (let[indented-doms (map #(string/replace % "\r\n" "\r\n  ") doms)]
+      (str otag
+           (reduce #(str %1 "\r\n  " %2) "" indented-doms)
+           "\r\n"
+           ctag))
+    (reduce #(str %1 %2 "\r\n") "" doms)))
 
 (defn ^:private raw-html [otag ctag doms]
   (str otag (apply str doms) ctag))
@@ -42,7 +44,7 @@
 (defn build-nested-html [tag inner-doms opts]
   (let [otag (open-tag tag)
         ctag (close-tag tag)]
-    (if (and (:pretty opts) (not-empty otag))
+    (if (:pretty opts)
       (pretty-html otag ctag inner-doms)
       (raw-html otag ctag inner-doms))))
 

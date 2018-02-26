@@ -85,7 +85,7 @@
     (let [parent-section-loc (find-parent-section-loc zt style)
           parent-level (-> parent-section-loc t/node :level)
           section-level (if parent-level (inc parent-level) 1)
-          updated-section (assoc section :level section-level)]
+          updated-section (section/update-level section section-level)]
       (append-section parent-section-loc updated-section))))
 
 (defn append-applicable-error-section-title-too-short [zt pos style text-lines]

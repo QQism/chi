@@ -14,9 +14,15 @@
       (string/replace #"\s{1,}" "-")
       string/lower-case))
 
-(defn ^:private create-header [txt line]
+(defn ^:private create-header [txt line level]
   (n/create {:type :header
+             :level level
              :children (verse/create-inline-markup txt)}))
+
+(defn update-level [section level]
+  (-> section
+      (assoc :level level)
+      (update-in [:children 0] #(assoc % :level level))))
 
 (defn create [txt line style level]
   (let [adornment (first line)]
@@ -24,7 +30,7 @@
                :style (str style adornment)
                :level level
                :name (normalize-section-name txt)
-               :children [(create-header txt line)]})))
+               :children [(create-header txt line level)]})))
 
 (defn error-section-title-too-short [pos style text-lines]
   (let [block-text (string/join "\r\n" text-lines)

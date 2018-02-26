@@ -24,6 +24,7 @@
 
         (let [[header paragraph] (:children section)]
           (assert-node {:type :header
+                        :level 1
                         :children [{:type :text
                                     :value "Section Title"}]}
                        header)
@@ -51,6 +52,7 @@
 
         (let [[header paragraph] (:children section)]
           (assert-node {:type :header
+                        :level 1
                         :children [{:type :text
                                     :value "Section Title"}]}
                        header)
@@ -86,6 +88,7 @@
       (let [[header-1 paragraph-1] (:children section-1)
             [header-2 paragraph-2] (:children section-2)]
         (assert-node {:type :header
+                      :level 1
                       :children
                       [{:type :text
                         :value "First Title"}]}
@@ -96,6 +99,7 @@
                         :value "First paragraph content"}]}
                      paragraph-1)
         (assert-node {:type :header
+                      :level 1
                       :children
                       [{:type :text
                         :value "Second Title"}]}
@@ -145,6 +149,7 @@
       (let [[header-1 paragraph-1 nested-section-1] (:children section-1)
             [header-2 paragraph-2 nested-section-2] (:children section-2)]
         (assert-node {:type :header
+                      :level 1
                       :children
                       [{:type :text
                         :value "First Title"}]}
@@ -160,6 +165,7 @@
                       :children [:children-count 3 count]}
                      nested-section-1)
         (assert-node {:type :header
+                      :level 1
                       :children
                       [{:type :text
                         :value "Second Title"}]}
@@ -177,6 +183,7 @@
 
         (let [[header paragraph nested-section] (:children nested-section-1)]
           (assert-node {:type :header
+                        :level 2
                         :children
                         [{:type :text
                           :value "Nested Title"}]}
@@ -191,6 +198,7 @@
                         :level 3
                         :children
                         [{:type :header
+                          :level 3
                           :children
                           [{:type :text
                             :value "Nested Nested Title"}]}]}
@@ -198,6 +206,7 @@
 
         (let [[header paragraph] (:children nested-section-2)]
           (assert-node {:type :header
+                        :level 2
                         :children
                         [{:type :text
                           :value "Another Nested Title"}]}

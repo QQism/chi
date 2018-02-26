@@ -40,6 +40,12 @@
 (defmethod create-tag :blockquote [node opts]
   (map->Tag {:name "blockquote"}))
 
+(defmethod create-tag :title [node opts]
+  (map->Tag {:name "h1" :attrs {:class "title"}}))
+
+(defmethod create-tag :subtitle [node opts]
+  (map->Tag {:name "h2" :attrs {:class "subtitle"}}))
+
 (defmethod create-tag :section [node opts]
   (let [name (:name node)]
     (map->Tag {:name "div"

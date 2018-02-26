@@ -6,20 +6,20 @@
 
 #?(:cljs (enable-console-print!))
 
-(defn remove-uid [node]
+(defn ^:private remove-uid [node]
   (postwalk (fn [n]
               (if (and (map? n) (:uid n))
                 (dissoc n :uid)
                 n)) node))
 
-(def function? #?(:cljs fn?
-                  :clj t/function?))
+(def ^:private function? #?(:cljs fn?
+                            :clj t/function?))
 
 (defn transform-cond-nodes
   ([expected node remove-uid?]
    (let [ks (keys expected) keys-node (cond-> node
-                     (not-empty ks) (select-keys ks)
-                     remove-uid? remove-uid)]
+                                        (not-empty ks) (select-keys ks)
+                                        remove-uid? remove-uid)]
      (reduce-kv (fn [[ex n] k v]
                   (if (and (vector? v)
                            (= (count v) 3)

@@ -18,10 +18,11 @@
   (n/create {:type :header
              :children (verse/create-inline-markup txt)}))
 
-(defn create [txt line style]
+(defn create [txt line style level]
   (let [adornment (first line)]
     (n/create {:type :section
                :style (str style adornment)
+               :level level
                :name (normalize-section-name txt)
                :children [(create-header txt line)]})))
 

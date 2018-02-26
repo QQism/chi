@@ -73,13 +73,20 @@
                 current-loc
                 (recur section-loc (inc depth))))))))))
 
+(defn find-parent-section-loc [zt style]
+  (if-let [matched-parent-section (find-matching-section-loc zt style)]
+    matched-parent-section
+    zt))
+
 (defn append-section-in-matched-location [zt section]
   ;; Find the matching parent section location
   ;; Append the new section as a child of the current path
   (let [style (:style section)]
-    (if-let [matched-parent-section (find-matching-section-loc zt style)]
-      (append-section matched-parent-section section)
-      (append-section zt section))))
+    (let [parent-section-loc (find-parent-section-loc zt style)
+          parent-level (-> parent-section-loc t/node :level)
+          section-level (if parent-level (inc parent-level) 1)
+          updated-section (assoc section :level section-level)]
+      (append-section parent-section-loc updated-section))))
 
 (defn append-applicable-error-section-title-too-short [zt pos style text-lines]
   (if (section/is-title-short? style text-lines)
@@ -89,7 +96,7 @@
 (defn append-section-line->text-line [zt pos text-lines]
   (let [[overline text _] text-lines
         section-style "overline"
-        new-section (section/create text overline section-style)]
+        new-section (section/create text overline section-style nil)]
     (-> zt (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short pos
                                                          section-style
@@ -98,7 +105,7 @@
 (defn append-section-text->line [zt pos text-lines]
   (let [[text underline] text-lines
         section-style "underline"
-        new-section (section/create text underline section-style)]
+        new-section (section/create text underline section-style nil)]
     (-> zt
         (append-section-in-matched-location new-section)
         (append-applicable-error-section-title-too-short pos

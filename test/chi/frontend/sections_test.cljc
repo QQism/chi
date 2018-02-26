@@ -18,6 +18,7 @@
       (let [[section] (:children root)]
         (assert-node {:type :section
                       :style "underline="
+                      :level 1
                       :children [:children-count 2 count]}
                      section)
 
@@ -44,6 +45,7 @@
       (let [[section] (:children root)]
         (assert-node {:type :section
                       :style "overline="
+                      :level 1
                       :children [:children-count 2 count]}
                      section)
 
@@ -72,10 +74,12 @@
     (let [[section-1 section-2] (:children root)]
       (assert-node {:type :section
                     :style "underline="
+                    :level 1
                     :children [:children-count 2 count]}
                    section-1)
       (assert-node {:type :section
                     :style "underline="
+                    :level 1
                     :children [:children-count 2 count]}
                    section-2)
 
@@ -128,11 +132,13 @@
     (let [[section-1 section-2] (:children root)]
       (assert-node {:type :section
                     :style "underline="
+                    :level 1
                     :children [:children-count 3 count]}
                    section-1)
 
       (assert-node {:type :section
                     :style "underline="
+                    :level 1
                     :children [:children-count 3 count]}
                    section-1)
 
@@ -150,6 +156,7 @@
                      paragraph-1)
         (assert-node {:type :section
                       :style "overline-"
+                      :level 2
                       :children [:children-count 3 count]}
                      nested-section-1)
         (assert-node {:type :header
@@ -164,6 +171,7 @@
                      paragraph-2)
         (assert-node {:type :section
                       :style "underline+"
+                      :level 2
                       :children [:children-count 2 count]}
                      nested-section-2)
 
@@ -180,6 +188,7 @@
                        paragraph)
           (assert-node {:type :section
                         :style "underline+"
+                        :level 3
                         :children
                         [{:type :header
                           :children
@@ -260,6 +269,7 @@
     (let [[section] (:children root)]
       (assert-node {:type :section
                     :style "underline="
+                    :level 1
                     :children [:children-count 2 count]}
                    section)
 
@@ -287,6 +297,7 @@
       (let [[section] (:children root)]
         (assert-node {:type :section
                       :style "overline="
+                      :level 1
                       :children [:children-count 3 count]}
                      section)
 

@@ -22,7 +22,8 @@
 (defmethod create-tag :table-body [node opts]
   (map->Tag {:name "tbody"}))
 
-(defmethod create-tag :table-header [node opts])
+(defmethod create-tag :table-header [node opts]
+  (map->Tag {:name "thead"}))
 
 (defmethod create-tag :row [node opts]
   (map->Tag {:name "tr"}))

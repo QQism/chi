@@ -12,6 +12,7 @@
                            :bullet-item "li"
                            :blockquote "blockquote"
                            :section "section"
+                           :header "h"
                            :text nil
                            :strong-emphasis "string"
                            :emphasis "em"})
@@ -46,7 +47,18 @@
       (raw-html otag ctag inner-doms))))
 
 ;; To avoid stack over flow if the ast is nested too deeply,
-;; This implementation uses stacks of nodes and doms to store data while calling `recur`
+;; instead of using the trivial recursion,
+;; this implementation uses stacks of nodes and doms to store data while calling `recur`
+;;
+;; Given that tree n nodes with n= r+l,
+;; r is the number of root nodes, l is the number of leaf nodes
+;; Comlexity:
+;;   - Time: 0(2r+l)
+;;   - Space:
+;;     + nodes stack: 0(logN)
+;;     + doms stack: 0(logN)
+;;
+;; This implementation may subject to change later
 (defn ^:private nodes->html
   [nodes doms opts]
   (let [ast (peek nodes)]

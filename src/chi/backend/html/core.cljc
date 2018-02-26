@@ -1,33 +1,71 @@
 (ns chi.backend.html.core
   (:require [clojure.string :as string]))
 
-(def ^:private nodes-tags {:root nil
-                           :paragraph "p"
-                           :table "table"
-                           :table-body "tbody"
-                           :table-header "thead"
-                           :row "tr"
-                           :cell "td"
-                           :bullet-list "ul"
-                           :bullet-item "li"
-                           :blockquote "blockquote"
-                           :section "section"
-                           :header "h"
-                           :text nil
-                           :strong-emphasis "string"
-                           :emphasis "em"})
+(defrecord Tag [name attrs])
+
+(defmulti create-tag
+  (fn [node opts]
+    (:type node)))
+
+(defmethod create-tag :root [node opts]
+  (let [{template :template} opts]
+    (if template
+      (map->Tag {:name "body"})
+      (map->Tag {:name nil}))))
+
+(defmethod create-tag :paragraph [node opts]
+  (map->Tag {:name "p"}))
+
+(defmethod create-tag :table [node opts]
+  (map->Tag {:name "table"}))
+
+(defmethod create-tag :table-body [node opts]
+  (map->Tag {:name "tbody"}))
+
+(defmethod create-tag :table-header [node opts])
+
+(defmethod create-tag :row [node opts]
+  (map->Tag {:name "tr"}))
+
+(defmethod create-tag :cell [node opts]
+  (map->Tag {:name "td"}))
+
+(defmethod create-tag :bullet-list [node opts]
+  (map->Tag {:name "ul"}))
+
+(defmethod create-tag :bullet-item [node opts]
+  (map->Tag {:name "li"}))
+
+(defmethod create-tag :blockquote [node opts]
+  (map->Tag {:name "blockquote"}))
+
+(defmethod create-tag :section [node opts]
+  (map->Tag {:name "section"}))
+
+(defmethod create-tag :header [node opts]
+  (let [level (:level node)]
+    (map->Tag {:name (str "h" level)})))
+
+(defmethod create-tag :text [node opts]
+  (map->Tag {:name nil}))
+
+(defmethod create-tag :strong-emphasis [node opts] 
+  (map->Tag {:name "strong"}))
+
+(defmethod create-tag :emphasis [node opts]
+  (map->Tag {:name "em"}))
 
 (defn ^:private html-attrs [opts]
   (reduce-kv (fn [s k v] (str s " " (name k) "=\"" v "\"") ) "" opts))
 
 (defn ^:private open-tag
-  ([tag opts]
-   (if tag (str "<" tag (html-attrs opts) ">") ""))
   ([tag]
-   (open-tag tag nil)))
+   (let [{name :name opts :opts} tag]
+     (if name (str "<" name (html-attrs opts) ">") ""))))
 
 (defn ^:private close-tag [tag]
-  (if tag (str "</" tag ">") ""))
+  (let [{name :name} tag]
+    (if name (str "</" name ">") "")))
 
 (defn ^:private pretty-html [otag ctag doms]
   (if (not-empty otag)
@@ -75,7 +113,7 @@
       (if (not-empty nodes)
         (let [next-node (-> nodes pop peek)
               new-nodes (-> nodes pop pop)
-              tag (-> next-node :type nodes-tags)
+              tag (create-tag next-node opts)
               c (-> next-node :children count)
               inner-doms (subvec doms 0 c)
               new-doms (subvec doms c)

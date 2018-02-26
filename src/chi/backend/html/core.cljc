@@ -36,9 +36,7 @@
          ctag)))
 
 (defn ^:private raw-html [otag ctag doms]
-  (str otag
-       (apply str doms)
-       ctag))
+  (str otag (apply str doms) ctag))
 
 (defn build-nested-html [tag inner-doms opts]
   (let [otag (open-tag tag)

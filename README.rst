@@ -1,5 +1,5 @@
 ===
-chi
+chí
 ===
 
 A restructuredtext compiler which generates HTML content for
@@ -64,6 +64,11 @@ Document Body
   + Substitution definitions
   + Comments
 
+What is `chí`?
+--------------
+
+`chí` is a Sino-Vietnamese word. The word has mutiple meanings, depending on context, and can be referred as *annals*, or *aspiration*.
+  
 License
 -------
 

@@ -5,22 +5,22 @@ chí
 A restructuredtext compiler which generates HTML content for
 JavsScript, ClojureScript, and Clojure
 
-**NOTE**: This library is under development and may subject to change
+**NOTE**: This library is under development and may subject to change drastically
 
 Usage
 -----
 
 Document Structure
 
-- Document `Checked`
-- Section `Checked`
+- Document ✓
+- Section ✓
 
-  + Title `Checked`
-- Transition `Checked`
+  + Title ✓
+- Transition ✓
 
 Document Body
 
-- Paragraph `Checked`
+- Paragraph ✓
 - Inline markup
 
   + Emphasis
@@ -37,18 +37,18 @@ Document Body
 - Block
 
   + Literal block
-  + Block quotes `Checked`
+  + Block quotes ✓
   + Doctest block
 - Lists
 
-  + Bullet `Checked`
+  + Bullet ✓
   + Enumerated
   + Definitions
   + Field lists
   + Option lists
 - Table
 
-  + Grid table `Checked`
+  + Grid table ✓ 
   + Simple table
 - Explicit markup blocks
 

@@ -3,7 +3,7 @@ chí
 ===
 
 A restructuredtext compiler which generates HTML content for
-JavsScript, ClojureScript, and Clojure
+JavaScript, ClojureScript, and Clojure
 
 **NOTE**: This library is under development and may subject to change drastically
 
